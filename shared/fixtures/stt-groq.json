@@ -1,0 +1,21 @@
+{
+  "name": "stt-groq",
+  "kind": "stt",
+  "settings": {
+    "mode": "remote",
+    "provider": "groq",
+    "model": "whisper-large-v3-turbo",
+    "apiKeyRef": "stt.apiKey"
+  },
+  "audio": { "mimeType": "audio/m4a", "fileName": "audio.m4a", "bytesUtf8": "FAKE_AUDIO_BYTES" },
+  "request": {
+    "method": "POST",
+    "url": "https://api.groq.com/openai/v1/audio/transcriptions",
+    "headers": { "Authorization": "Bearer <API_KEY>" },
+    "contentType": "multipart/form-data",
+    "multipartFields": ["file", "model", "response_format"],
+    "fieldValues": { "model": "whisper-large-v3-turbo", "response_format": "json" }
+  },
+  "response": { "status": 200, "body": { "text": "Hello from Groq Whisper." } },
+  "expectedText": "Hello from Groq Whisper."
+}

@@ -1,0 +1,33 @@
+{
+  "name": "cleanup-groq",
+  "kind": "cleanup",
+  "settings": {
+    "enabled": true,
+    "provider": "groq",
+    "model": "llama-3.3-70b-versatile",
+    "apiKeyRef": "cleanup.apiKey",
+    "promptId": "improve-transcription"
+  },
+  "transcript": "hello wrld this is a rough transcript",
+  "request": {
+    "method": "POST",
+    "url": "https://api.groq.com/openai/v1/chat/completions",
+    "headers": { "Authorization": "Bearer <API_KEY>", "Content-Type": "application/json" },
+    "body": {
+      "model": "llama-3.3-70b-versatile",
+      "messages": [
+        { "role": "system", "content": "<improve-transcription prompt>" },
+        { "role": "user", "content": "hello wrld this is a rough transcript" }
+      ],
+      "temperature": 0.2,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "choices": [{ "message": { "role": "assistant", "content": "Hello world, this is a rough transcript." } }]
+    }
+  },
+  "expectedText": "Hello world, this is a rough transcript."
+}

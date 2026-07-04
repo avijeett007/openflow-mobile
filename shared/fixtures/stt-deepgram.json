@@ -1,0 +1,27 @@
+{
+  "name": "stt-deepgram",
+  "kind": "stt",
+  "settings": {
+    "mode": "remote",
+    "provider": "deepgram",
+    "model": "nova-2",
+    "apiKeyRef": "stt.apiKey"
+  },
+  "audio": { "mimeType": "audio/m4a", "fileName": "audio.m4a", "bytesUtf8": "FAKE_AUDIO_BYTES" },
+  "request": {
+    "method": "POST",
+    "url": "https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true",
+    "headers": { "Authorization": "Token <API_KEY>", "Content-Type": "audio/m4a" },
+    "contentType": "audio/m4a",
+    "bodyIsRawAudioBytes": true
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "results": {
+        "channels": [{ "alternatives": [{ "transcript": "Hello from Deepgram Nova." }] }]
+      }
+    }
+  },
+  "expectedText": "Hello from Deepgram Nova."
+}

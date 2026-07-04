@@ -1,0 +1,17 @@
+{
+  "name": "handoff-samples",
+  "kind": "handoff",
+  "note": "Canonical iOS App-Group hand-off payloads. The Swift side must produce/parse these exact JSON shapes.",
+  "samples": [
+    { "encoded": "{\"rid\":\"abc-123\",\"status\":\"recording\"}", "decoded": { "rid": "abc-123", "status": "recording" } },
+    { "encoded": "{\"rid\":\"abc-123\",\"status\":\"transcribing\"}", "decoded": { "rid": "abc-123", "status": "transcribing" } },
+    { "encoded": "{\"rid\":\"abc-123\",\"status\":\"cleaning\"}", "decoded": { "rid": "abc-123", "status": "cleaning" } },
+    { "encoded": "{\"rid\":\"abc-123\",\"status\":\"ready\",\"text\":\"Hello world.\"}", "decoded": { "rid": "abc-123", "status": "ready", "text": "Hello world." } },
+    { "encoded": "{\"rid\":\"abc-123\",\"status\":\"error\",\"error\":\"network unavailable\"}", "decoded": { "rid": "abc-123", "status": "error", "error": "network unavailable" } }
+  ],
+  "invalid": [
+    "not json",
+    "{\"status\":\"ready\"}",
+    "{\"rid\":\"x\",\"status\":\"bogus\"}"
+  ]
+}

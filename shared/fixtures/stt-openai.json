@@ -1,0 +1,21 @@
+{
+  "name": "stt-openai",
+  "kind": "stt",
+  "settings": {
+    "mode": "remote",
+    "provider": "openai",
+    "model": "whisper-1",
+    "apiKeyRef": "stt.apiKey"
+  },
+  "audio": { "mimeType": "audio/m4a", "fileName": "audio.m4a", "bytesUtf8": "FAKE_AUDIO_BYTES" },
+  "request": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/audio/transcriptions",
+    "headers": { "Authorization": "Bearer <API_KEY>" },
+    "contentType": "multipart/form-data",
+    "multipartFields": ["file", "model", "response_format"],
+    "fieldValues": { "model": "whisper-1", "response_format": "json" }
+  },
+  "response": { "status": 200, "body": { "text": "Hello from OpenAI Whisper." } },
+  "expectedText": "Hello from OpenAI Whisper."
+}

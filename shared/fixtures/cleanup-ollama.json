@@ -1,0 +1,35 @@
+{
+  "name": "cleanup-ollama",
+  "kind": "cleanup",
+  "settings": {
+    "enabled": true,
+    "provider": "ollama",
+    "baseUrl": "http://localhost:11434/v1",
+    "model": "llama3.1",
+    "apiKeyRef": "cleanup.apiKey",
+    "promptId": "improve-transcription"
+  },
+  "transcript": "no api key needed for local ollama",
+  "note": "Ollama runs locally and needs no API key — the Authorization header is omitted when the key is empty.",
+  "request": {
+    "method": "POST",
+    "url": "http://localhost:11434/v1/chat/completions",
+    "headers": { "Content-Type": "application/json" },
+    "body": {
+      "model": "llama3.1",
+      "messages": [
+        { "role": "system", "content": "<improve-transcription prompt>" },
+        { "role": "user", "content": "no api key needed for local ollama" }
+      ],
+      "temperature": 0.2,
+      "stream": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "choices": [{ "message": { "role": "assistant", "content": "No API key needed for local Ollama." } }]
+    }
+  },
+  "expectedText": "No API key needed for local Ollama."
+}
