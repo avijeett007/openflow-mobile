@@ -91,7 +91,76 @@ Default bases: groq/openai as above, openrouter `https://openrouter.ai/api/v1`.
 - `encodeHandoff(h): string`, `decodeHandoff(s): DictationHandoff` (throws `HandoffDecodeError`).
 - `DictationHandoffSchema`, `DictationStatusSchema` (zod). JSON is flat & stable — the Swift side mirrors it verbatim.
 
+### Offline Translator core (`src/translator/`, chunk T1)
+Pure-TS heart of the Live Translation tab. FROZEN contract for chunk T2
+(`modules/translator` natives) and T3 (Translator UI) — both import ONLY from
+`@openflow/shared`.
+
+**Conversation state machine** (`conversation.ts`):
+- `Side` `'a' | 'b'`, `otherSide(side)`, `TurnStatus`
+  `'idle'|'listening'|'translating'|'showing'|'speaking'|'error'`.
+- `interface Exchange { id, ts, side, sourceLang, targetLang, sourceText, translatedText, detectedLang?, spoken }`.
+- `ConversationState` / `ConversationAction` + `conversationReducer` (exhaustive
+  switch), `initialConversationState(opts?)`, `HISTORY_CAP = 50`, `DEFAULT_LANGS`.
+- Semantics: `MIC_TAP` on the **other** side while listening cancels + restarts
+  listening there; same-side tap while listening is a no-op (the hook stops STT
+  → `STT_FINAL`); taps are ignored while `translating`. Empty `STT_FINAL` →
+  `idle` (no turn). `TRANSLATED` prepends its `Exchange` to `history` (newest
+  first, capped 50). Errors are per-turn and NON-fatal (history survives; any
+  tap recovers). `SWAP_LANGS` / `SET_LANG` apply only outside an active turn
+  (idle/showing/error) and are ignored mid-turn. `SPEAK_START` is gated:
+  `showing` + `speakEnabled` + a current exchange, and marks it `spoken`.
+  Stale async results (`STT_PARTIAL`/`STT_FINAL`/`TRANSLATED` in the wrong
+  status) are dropped by the reducer.
+
+**Pack tracking** (`packs.ts`):
+- `PackState 'installed'|'downloadable'|'downloading'|'unsupported'`
+  (`downloading` is client-side; the module only reports `PairStatus`),
+  `PACK_STATES`, `PackMap`, `initialPackMap`, `getPackState(map, lang)`
+  (alias-tolerant), `packReducer` with `SYNC` / `DOWNLOAD_START` /
+  `DOWNLOAD_DONE` / `DOWNLOAD_FAILED` / `PACK_DELETED`. `SYNC` rebuilds from
+  `listSupportedLanguages()` + `listDownloadedLanguages()`, preserves in-flight
+  downloads, matches alias spellings (iw↔he, nb-NO↔no, fil↔tl) and keeps
+  Apple's region/script variants (en-GB vs en-US, zh-Hans vs zh-Hant) distinct.
+
+**Language mapping** (`langs.ts`):
+- `bcp47Primary`, `canonicalPrimary` (+ `PRIMARY_ALIASES`: iw→he, in→id, ji→yi,
+  tl→fil, nb→no, mo→ro), `langKey` (script-aware for Chinese: zh-CN→zh-hans,
+  zh-TW→zh-hant), `fullLangKey`.
+- `toTranslationLang(tag, available)` — maps any STT locale onto the platform's
+  translation list (exact → language+script → primary tiers; returns codes FROM
+  the list, `null` if unsupported). `pickSttLocale(lang, sttLocales)` is the
+  reverse. `displayLanguageName(code)` (Intl.DisplayNames with
+  `FALLBACK_DISPLAY_NAMES` for ICU-less Hermes).
+- `computeUsable(sttLocales, translationLangs, packStates): UsableLang[]` —
+  the picker list: `{ lang, displayName, sttLocale, sttKnown, pack, usable }`,
+  usable ⇔ pack installed ∧ STT locale exists (STT unknown when `sttLocales`
+  is `null`); sorted ready → installed-no-STT → downloading → downloadable.
+- Pinned platform lists: [`fixtures/langs-mlkit.json`](./fixtures/langs-mlkit.json)
+  (ML Kit, 59 codes) and [`fixtures/langs-apple.json`](./fixtures/langs-apple.json)
+  (Apple iOS 18, 21 codes) — mapping tests run against both.
+
+**`modules/translator` JS surface** (`module.ts`, types only):
+- `interface TranslatorModuleApi` — `translate`, `getPairStatus`,
+  `downloadPack`, `listSupportedLanguages`, `listDownloadedLanguages`,
+  `deletePack`, `identifyLanguage`, `sttOnDeviceLocales`,
+  `isTranslationAvailable` (see DESIGN-mobile-translator.md for exact
+  signatures). Plus `PairStatus` (+ `PAIR_STATUSES`), `TranslateResult`,
+  `DownloadPackOptions`, `TranslationAvailability`. T2 implements this
+  interface; T3 consumes it through T2's defensive loader.
+
+**Settings** (additive; `SETTINGS_VERSION` stays `1`, Kotlin IME untouched):
+- `TranslatorSettingsSchema` → `Settings.translator`:
+```ts
+TranslatorSettings { langs: { a: string, b: string },   // defaults en / es
+                     speakEnabled: boolean,             // default true
+                     autoDetect: boolean,               // default false
+                     wifiOnlyDownloads: boolean }       // default true (Android ML Kit)
+```
+Payloads without `translator` parse and gain the defaults (additive migration).
+
 ## Testing
 `npm test` (jest, ts-jest, node). Every export is covered; provider request shapes
 and canned responses are pinned in [`fixtures/`](./fixtures) and bound to the clients
-by `src/fixtures.test.ts` for the Kotlin mirror.
+by `src/fixtures.test.ts` for the Kotlin mirror. Translator language mapping is
+pinned to both platforms' language lists in `fixtures/langs-*.json`.
