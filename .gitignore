@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+
+# Expo / generated native projects (CNG — not committed)
+.expo/
+dist/
+web-build/
+ios/
+android/
+
+# native / build artifacts
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# testing
+coverage/
+
+# misc
+.DS_Store
+*.log
+npm-debug.*
+yarn-error.*
+.env
+.env.local
+*.tsbuildinfo
