@@ -1,0 +1,26 @@
+{
+  "description": "Pinned Apple Translation framework language list (iOS 18, ~19-20 languages / 21 codes: English twice, Chinese twice) as BCP-47 identifiers the way modules/translator listSupportedLanguages() reports LanguageAvailability().supportedLanguages on iOS. Region/script variants are real distinct entries here (en-GB vs en-US, zh-Hans vs zh-Hant, pt-BR only). Order matters for primary-subtag fallback matching: first match in this list wins.",
+  "codes": [
+    "ar",
+    "de",
+    "en-GB",
+    "en-US",
+    "es",
+    "fr",
+    "hi",
+    "id",
+    "it",
+    "ja",
+    "ko",
+    "nl",
+    "pl",
+    "pt-BR",
+    "ru",
+    "th",
+    "tr",
+    "uk",
+    "vi",
+    "zh-Hans",
+    "zh-Hant"
+  ]
+}

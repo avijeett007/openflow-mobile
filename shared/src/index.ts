@@ -25,6 +25,7 @@ export {
   CleanupProviderSchema,
   PromptSchema,
   PrivacyModeSchema,
+  TranslatorSettingsSchema,
   SETTINGS_VERSION,
   defaultPrompt,
   defaultSettings,
@@ -43,6 +44,7 @@ export type {
   CleanupProvider,
   Prompt,
   PrivacyMode,
+  TranslatorSettings,
 } from './settings';
 
 // STT
@@ -66,3 +68,43 @@ export {
   decodeHandoff,
 } from './handoff';
 export type { DictationHandoff, DictationStatus } from './handoff';
+
+// Offline Translator core (T1) — conversation reducer, pack tracking,
+// language mapping, and the modules/translator JS-surface types.
+export {
+  DEFAULT_LANGS,
+  HISTORY_CAP,
+  conversationReducer,
+  initialConversationState,
+  otherSide,
+  PACK_STATES,
+  getPackState,
+  initialPackMap,
+  packReducer,
+  FALLBACK_DISPLAY_NAMES,
+  PRIMARY_ALIASES,
+  bcp47Primary,
+  canonicalPrimary,
+  computeUsable,
+  displayLanguageName,
+  langKey,
+  pickSttLocale,
+  toTranslationLang,
+  PAIR_STATUSES,
+} from './translator';
+export type {
+  ConversationAction,
+  ConversationState,
+  Exchange,
+  Side,
+  TurnStatus,
+  PackAction,
+  PackMap,
+  PackState,
+  UsableLang,
+  DownloadPackOptions,
+  PairStatus,
+  TranslateResult,
+  TranslationAvailability,
+  TranslatorModuleApi,
+} from './translator';

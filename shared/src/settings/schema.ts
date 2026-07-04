@@ -79,6 +79,34 @@ export type Prompt = z.infer<typeof PromptSchema>;
 export const PrivacyModeSchema = z.enum(['full', 'keywordsOnly', 'off']);
 export type PrivacyMode = z.infer<typeof PrivacyModeSchema>;
 
+// ---- Translator -------------------------------------------------------------
+
+/**
+ * Live Translation (offline translator) settings. Purely ADDITIVE to the v1
+ * settings shape — `SETTINGS_VERSION` stays 1, old payloads without a
+ * `translator` key parse and get these defaults, and the Kotlin IME mirror
+ * (which only reads `stt.mode`) is untouched.
+ *
+ * `langs.a` / `langs.b` are translation-language codes as the PLATFORM reports
+ * them (ML Kit `es`, Apple `zh-Hans`, ...) — see shared/src/translator/langs.ts.
+ */
+export const TranslatorSettingsSchema = z.object({
+  /** The two conversation languages (side 'a' = device holder, 'b' = counterpart). */
+  langs: z
+    .object({
+      a: z.string().min(1).default('en'),
+      b: z.string().min(1).default('es'),
+    })
+    .default({ a: 'en', b: 'es' }),
+  /** Speak translations aloud via offline TTS (UI still gates on voice availability). */
+  speakEnabled: z.boolean().default(true),
+  /** Auto-flip direction when identifyLanguage() says the other side spoke (stretch; default off). */
+  autoDetect: z.boolean().default(false),
+  /** Android ML Kit pack downloads require Wi-Fi (~30 MB per pack). iOS ignores this. */
+  wifiOnlyDownloads: z.boolean().default(true),
+});
+export type TranslatorSettings = z.infer<typeof TranslatorSettingsSchema>;
+
 // ---- Root -----------------------------------------------------------------
 
 export const SETTINGS_VERSION = 1 as const;
@@ -89,6 +117,7 @@ export const SettingsSchema = z.object({
   cleanup: CleanupSettingsSchema.default(CleanupSettingsSchema.parse({})),
   prompts: z.array(PromptSchema).min(1).default(() => [defaultPrompt()]),
   privacyMode: PrivacyModeSchema.default('full'),
+  translator: TranslatorSettingsSchema.default(TranslatorSettingsSchema.parse({})),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 
