@@ -1,6 +1,6 @@
 {
   "name": "openflow-mobile",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "OpenFlow Mobile — voice-dictation keyboard for iOS + Android with a companion app.",
   "license": "MIT",
   "private": true,
@@ -15,8 +15,9 @@
     "typecheck": "npm run typecheck --workspace @openflow/shared && tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
     "format": "prettier --check .",
-    "test": "npm run test --workspace @openflow/shared && jest",
-    "test:app": "jest"
+    "test": "npm run test --workspace @openflow/shared && jest && jest --config modules/translator/jest.config.js",
+    "test:app": "jest",
+    "test:module": "jest --config modules/translator/jest.config.js"
   },
   "dependencies": {
     "@bacons/apple-targets": "4.0.7",

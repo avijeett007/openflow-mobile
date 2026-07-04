@@ -81,6 +81,10 @@ export const strings = {
     sttSection: 'Speech-to-text',
     cleanupSection: 'Cleanup',
     privacySection: 'Privacy',
+    translatorSection: 'Live Translation',
+    translatorAutoDetect: 'Auto-detect spoken language',
+    translatorAutoDetectHint:
+      'When on, each turn detects the spoken language and flips the translation direction automatically. Off by default — pick languages manually on the Translate tab.',
     mode: 'Mode',
     // STT mode options. "Local" is intentionally listed first.
     modeLocal: 'Local (on-device) — free, private, no API key',
