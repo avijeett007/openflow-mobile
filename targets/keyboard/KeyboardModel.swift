@@ -1,3 +1,4 @@
+import Combine // ObservableObject/@Published live in Combine; Xcode 16 explicit modules don't re-export it via SwiftUI
 import SwiftUI
 
 // MARK: - Theme (OpenFlow dark, violet #7C5CFF accent)
