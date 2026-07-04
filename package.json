@@ -10,8 +10,8 @@
   ],
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "typecheck": "npm run typecheck --workspace @openflow/shared && tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
     "format": "prettier --check .",
@@ -24,7 +24,7 @@
     "@react-native-async-storage/async-storage": "2.1.2",
     "@react-navigation/bottom-tabs": "^7.18.7",
     "@react-navigation/native": "^7.3.7",
-    "expo": "53.0.0",
+    "expo": "~53.0",
     "expo-audio": "~0.4.9",
     "expo-clipboard": "~7.1.5",
     "expo-constants": "~17.1.8",
@@ -33,7 +33,7 @@
     "expo-secure-store": "~14.2.4",
     "expo-status-bar": "~2.2.3",
     "react": "19.0.0",
-    "react-native": "0.79.5",
+    "react-native": "0.79.6",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1"
   },
