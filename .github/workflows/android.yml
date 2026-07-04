@@ -1,0 +1,67 @@
+name: Android
+
+# Builds the Android app (with the OpenFlow IME injected by the withAndroidIme
+# config plugin) and runs the JVM contract tests that pin the Kotlin HTTP mirror
+# to shared/fixtures. No signing, no paid accounts — a debug APK artifact only.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'android-ime/**'
+      - 'plugins/**'
+      - 'modules/**'
+      - 'shared/fixtures/**'
+      - 'app.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: prebuild · assembleDebug · testDebugUnitTest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Android SDK/build-tools are preinstalled on ubuntu-latest runners; ANDROID_HOME
+      # is set, so gradle resolves the SDK without a local.properties file.
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Expo prebuild (Android)
+        run: npx expo prebuild -p android --no-install
+
+      - name: Gradle assembleDebug + unit tests
+        working-directory: android
+        run: ./gradlew assembleDebug testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Upload debug APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openflow-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload unit test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-unit-test-report
+          path: android/app/build/reports/tests/
+          if-no-files-found: ignore
