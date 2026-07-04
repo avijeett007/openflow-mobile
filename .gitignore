@@ -6,6 +6,8 @@ node_modules/
 # native code (e.g. modules/settings-bridge/android, .../ios), which IS committed.
 .expo/
 dist/
+dist-ios/
+dist-android/
 web-build/
 /ios/
 /android/

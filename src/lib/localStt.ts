@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { toTranslationLang } from '@openflow/shared';
 
 /**
  * localStt — thin wrapper around the PLATFORM on-device speech recognizers via
@@ -69,6 +70,15 @@ interface SpeechErrorEvent {
 interface Subscription {
   remove(): void;
 }
+
+/** Android `getSupportedLocales()` result (jamsch expo-speech-recognition). */
+export interface SupportedLocales {
+  /** All languages the recognizer knows (installed + downloadable). */
+  locales: string[];
+  /** Languages whose offline model is installed on the device right now. */
+  installedLocales: string[];
+}
+
 export interface SpeechModule {
   isRecognitionAvailable(): boolean;
   supportsOnDeviceRecognition(): boolean;
@@ -81,7 +91,17 @@ export interface SpeechModule {
     event: 'result' | 'error' | 'end',
     listener: (ev: SpeechResultEvent | SpeechErrorEvent | undefined) => void,
   ): Subscription;
+  /** [Android 13+] Enumerate on-device locales. Empty/absent below API 33. */
+  getSupportedLocales?(options: { androidRecognitionServicePackage?: string }): Promise<SupportedLocales>;
+  /** [Android 13+] Trigger download of an offline recognition model. */
+  androidTriggerOfflineModelDownload?(options: { locale: string }): Promise<{
+    status: string;
+    message: string;
+  }>;
 }
+
+/** Default Android recognition-service package that owns the offline models. */
+const ANDROID_ON_DEVICE_SERVICE = 'com.google.android.as';
 
 /** Dynamically load the native module; `null` where it does not exist. */
 export function loadSpeechModule(): SpeechModule | null {
@@ -101,6 +121,15 @@ export function loadSpeechModule(): SpeechModule | null {
       stop: () => m.stop(),
       abort: () => m.abort(),
       addSpeechRecognitionListener: (event, listener) => addListener(event, listener),
+      // T4: optional Android locale enumeration / model download (API 33+).
+      getSupportedLocales:
+        typeof m.getSupportedLocales === 'function'
+          ? (options) => m.getSupportedLocales(options)
+          : undefined,
+      androidTriggerOfflineModelDownload:
+        typeof m.androidTriggerOfflineModelDownload === 'function'
+          ? (options) => m.androidTriggerOfflineModelDownload(options)
+          : undefined,
     };
   } catch {
     return null;
@@ -157,7 +186,7 @@ export function createLocalStt(getModule: () => SpeechModule | null = loadSpeech
   }
 
   return {
-    async isAvailable(): Promise<LocalSttAvailability> {
+    async isAvailable(lang?: string): Promise<LocalSttAvailability> {
       const mod = getModule();
       if (!mod) return { available: false, reason: MODULE_UNAVAILABLE };
       try {
@@ -175,6 +204,31 @@ export function createLocalStt(getModule: () => SpeechModule | null = loadSpeech
                 ? 'On-device dictation is not supported on this device / iOS version. Enable Siri & Dictation, or use a Remote provider.'
                 : 'On-device speech recognition is not installed. Install offline speech (Settings → speech services / language packs), or use a Remote provider.',
           };
+        }
+        // T4: when a specific language is requested, verify the device actually
+        // has an on-device recognizer for it — but ONLY where the platform lets
+        // us enumerate locales (Android API 33+). iOS per-locale support is
+        // reported by the translator module's `sttOnDeviceLocales()`, and an
+        // empty/failed enumeration must NOT block (fail open, not closed).
+        if (lang && Platform.OS === 'android' && mod.getSupportedLocales) {
+          try {
+            const { locales, installedLocales } = await mod.getSupportedLocales({
+              androidRecognitionServicePackage: ANDROID_ON_DEVICE_SERVICE,
+            });
+            const installed = installedLocales ?? [];
+            const all = locales ?? [];
+            // Prefer the installed (offline-ready) list; fall back to the full
+            // supported list when the service doesn't report installed models.
+            const known = installed.length > 0 ? installed : all;
+            if (known.length > 0 && toTranslationLang(lang, known) === null) {
+              return {
+                available: false,
+                reason: `On-device speech recognition for "${lang}" is not installed. Download the offline language, or pick another language.`,
+              };
+            }
+          } catch {
+            // Enumeration unavailable (API < 33, missing service) — don't block.
+          }
         }
         return { available: true };
       } catch (err) {
@@ -289,6 +343,72 @@ export function createLocalStt(getModule: () => SpeechModule | null = loadSpeech
 
 /** App-wide singleton recognizer. */
 export const localStt: LocalStt = createLocalStt();
+
+// ---- T4: Android on-device locale enumeration / model download -------------
+
+/**
+ * Safely enumerate the device's on-device STT locales.
+ *
+ * - Android API 33+ → `{ locales, installedLocales }` from the on-device
+ *   recognition service.
+ * - Android < 33, non-Android, or any failure → `null` (enumeration
+ *   unavailable). Callers treat `null` as "STT locales UNKNOWN" (see
+ *   `computeUsable`'s `sttKnown: false`), NOT as "no locales".
+ *
+ * iOS callers should prefer the translator module's `sttOnDeviceLocales()`
+ * (SFSpeechRecognizer × on-device support) — this wrapper only covers Android.
+ */
+export async function getSupportedLocalesSafe(
+  getModule: () => SpeechModule | null = loadSpeechModule,
+): Promise<SupportedLocales | null> {
+  if (Platform.OS !== 'android') return null;
+  const mod = getModule();
+  if (!mod || !mod.getSupportedLocales) return null;
+  try {
+    const res = await mod.getSupportedLocales({
+      androidRecognitionServicePackage: ANDROID_ON_DEVICE_SERVICE,
+    });
+    return { locales: res.locales ?? [], installedLocales: res.installedLocales ?? [] };
+  } catch {
+    return null;
+  }
+}
+
+export interface OfflineModelDownloadResult {
+  ok: boolean;
+  /** e.g. 'download_success' | 'opened_dialog' | 'download_canceled', or an error. */
+  status?: string;
+  message?: string;
+}
+
+/**
+ * Trigger download of an Android offline recognition model for `locale`.
+ * Android 13+ only; on Android 12/non-Android/failure resolves `{ ok: false }`
+ * with a reason. (Used by the Translator picker's "STT pack missing" rows.)
+ */
+export async function triggerAndroidOfflineModelDownload(
+  locale: string,
+  getModule: () => SpeechModule | null = loadSpeechModule,
+): Promise<OfflineModelDownloadResult> {
+  if (Platform.OS !== 'android') {
+    return { ok: false, message: 'Offline model download is Android-only.' };
+  }
+  const mod = getModule();
+  if (!mod || !mod.androidTriggerOfflineModelDownload) {
+    return {
+      ok: false,
+      message: 'Offline speech model download requires Android 13 or newer.',
+    };
+  }
+  try {
+    const res = await mod.androidTriggerOfflineModelDownload({ locale });
+    // 'download_canceled' is a user action, not success.
+    const ok = res.status === 'download_success' || res.status === 'opened_dialog';
+    return { ok, status: res.status, message: res.message };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}
 
 // ---- "Test" helper (Settings / onboarding) --------------------------------
 

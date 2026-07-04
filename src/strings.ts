@@ -144,6 +144,68 @@ export const strings = {
     version: 'Version',
   },
 
+  translate: {
+    title: 'Live Translation',
+    // Empty-pane prompts, labelled by language name.
+    tapToSpeakFmt: (lang: string): string => `Tap the mic and speak ${lang}`,
+    listeningFmt: (lang: string): string => `Listening in ${lang}…`,
+    translating: 'Translating…',
+    speaking: 'Speaking…',
+    // Accessibility: mic button labels.
+    speakInFmt: (lang: string): string => `Speak in ${lang}`,
+    stopListening: 'Stop listening',
+    // Center bar.
+    swap: 'Swap languages',
+    speakOn: 'Speak translations aloud',
+    speakOff: 'Speak translations (no voice installed for this language)',
+    soloMode: 'Solo mode (don’t rotate the top pane)',
+    history: 'History',
+    // Offline / pack status chip.
+    offlineReady: 'On-device — works offline',
+    packMissingFmt: (lang: string): string =>
+      `Translation pack for ${lang} not installed — download it to translate offline.`,
+    translationUnavailable: 'On-device translation is unavailable on this device.',
+    // Announced to VoiceOver when a new translation appears.
+    announceFmt: (lang: string, text: string): string => `Translation in ${lang}: ${text}`,
+    // Honest per-turn error copy (fallbacks when the platform gives no message).
+    sttUnavailable:
+      'On-device speech recognition is unavailable for this language on this device.',
+    permissionDenied: 'Speech-recognition permission was not granted.',
+    sttFailed: 'Couldn’t hear that — please try again.',
+    translateFailed:
+      'Couldn’t translate that. The language pack may be missing — download it below and try again.',
+    // Language picker.
+    pickerTitleFmt: (side: string): string => `Choose ${side} language`,
+    sideA: 'your',
+    sideB: 'their',
+    usableSection: 'Ready to use',
+    downloadableSection: 'Available to download',
+    download: 'Download',
+    downloading: 'Downloading…',
+    wifiOnly: 'Download over Wi-Fi only',
+    packSizeNote: '~30 MB',
+    // STT-pack-missing row copy (per platform).
+    sttMissingAndroid:
+      'Speech recognition for this language isn’t installed. Tap to download the offline model (Android 13+).',
+    sttMissingAndroidCta: 'Install speech model',
+    sttMissingIos:
+      'Speech recognition for this language isn’t installed. Add it in Settings ▸ General ▸ Keyboard ▸ Dictation Languages, then reopen this screen.',
+    sttUnknown: 'Speech-model availability couldn’t be checked on this device.',
+    // Badges legend.
+    badgeInstalled: 'Installed',
+    badgeDownloadable: 'Downloadable',
+    badgeDownloading: 'Downloading',
+    badgeUnsupported: 'Not supported',
+    // Required attribution (Android / ML Kit terms).
+    poweredByGoogle: 'Translations powered by Google',
+    copy: 'Copy',
+    copied: 'Copied!',
+    emptyHistory: 'No translations yet. Your conversation stays on this device.',
+    // Platform explainer when translation isn't available at all.
+    iosFloorExplainer:
+      'Live Translation needs iOS 18 or newer with Apple’s on-device Translation. Everything else in OpenFlow still works.',
+  },
+
   common: {
     cancel: 'Cancel',
     back: 'Back',
