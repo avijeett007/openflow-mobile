@@ -9,7 +9,7 @@ import org.junit.Test
 
 /**
  * JVM contract tests for [OpenFlowHttp], bound to the SAME fixtures that pin the
- * TypeScript clients (`shared/fixtures/*.json`, mirrored into this module's test
+ * TypeScript clients (the JSON files under `shared/fixtures`, mirrored into this module's test
  * resources by the `withAndroidIme` config plugin). If the Kotlin HTTP mirror
  * drifts from the shared contract, these fail — the whole point of C4.
  *
