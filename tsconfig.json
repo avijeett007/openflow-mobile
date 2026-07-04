@@ -4,5 +4,13 @@
     "strict": true,
     "skipLibCheck": true
   },
-  "include": ["app/**/*.ts", "app/**/*.tsx", "app.config.ts", "index.js"]
+  "include": [
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "app.config.ts",
+    "index.js",
+    "jest.setup.ts"
+  ]
 }
