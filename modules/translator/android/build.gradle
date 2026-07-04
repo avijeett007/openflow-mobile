@@ -1,0 +1,31 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.translator'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.translator"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  // On-device translation (~30MB packs, 59 languages, English-pivot) and
+  // language identification. Local expo modules carry their OWN gradle deps, so
+  // these are injected into the app's Android build purely by autolinking this
+  // module — no app-level build.gradle edit and no config plugin required.
+  // Pins per DESIGN-mobile-translator.md ("Stack decisions"):
+  implementation "com.google.mlkit:translate:17.0.3"
+  implementation "com.google.mlkit:language-id:17.0.6"
+  // ML Kit Task<T> results are bridged to expo Promises with listeners (no
+  // coroutines), so no extra async deps are needed — play-services-tasks comes
+  // in transitively via ML Kit.
+}
