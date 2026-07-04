@@ -1,4 +1,5 @@
 import { useAppRecorder } from '../lib/recorder';
+import { localStt } from '../lib/localStt';
 import { resolveSecret } from '../lib/secrets';
 import { useAppState } from '../context/AppState';
 import {
@@ -23,6 +24,7 @@ export function useAppDictation(opts?: {
 
   return useDictation({
     recorder,
+    localStt,
     getSettings,
     resolveSecret,
     saveHistory: addRecord,

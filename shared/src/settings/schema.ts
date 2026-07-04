@@ -10,8 +10,19 @@ import { z } from 'zod';
 
 // ---- STT ------------------------------------------------------------------
 
-/** v1 supports remote providers and self-hosted (custom baseUrl) endpoints. */
-export const SttModeSchema = z.enum(['remote', 'selfHosted']);
+/**
+ * STT transcription mode:
+ * - `local`      on-device platform recognizer (iOS `SFSpeechRecognizer` with
+ *                on-device recognition; Android built-in `SpeechRecognizer`).
+ *                No API key, no network, zero model download. When `local`, the
+ *                `provider` / `baseUrl` / `model` / `apiKeyRef` fields are
+ *                IRRELEVANT — the recognizer runs on the OS. The schema keeps
+ *                them (populated by their defaults) so the shape stays stable
+ *                for the Kotlin IME mirror; the app simply ignores them.
+ * - `remote`     hosted provider (Groq/OpenAI/Deepgram) over the network.
+ * - `selfHosted` OpenAI-compatible endpoint the user hosts (custom `baseUrl`).
+ */
+export const SttModeSchema = z.enum(['local', 'remote', 'selfHosted']);
 export type SttMode = z.infer<typeof SttModeSchema>;
 
 export const SttProviderSchema = z.enum(['groq', 'openai', 'deepgram', 'custom']);
@@ -19,6 +30,8 @@ export type SttProvider = z.infer<typeof SttProviderSchema>;
 
 export const SttSettingsSchema = z.object({
   mode: SttModeSchema.default('remote'),
+  // The fields below are unused when `mode === 'local'`. They stay optional /
+  // defaulted so a `{ mode: 'local' }` payload parses without any of them.
   provider: SttProviderSchema.default('groq'),
   /** Optional override of the provider's default base URL (required for `custom`). */
   baseUrl: z.string().url().optional(),

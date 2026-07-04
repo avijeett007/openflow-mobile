@@ -82,6 +82,20 @@ export const strings = {
     cleanupSection: 'Cleanup',
     privacySection: 'Privacy',
     mode: 'Mode',
+    // STT mode options. "Local" is intentionally listed first.
+    modeLocal: 'Local (on-device) — free, private, no API key',
+    modeRemote: 'Remote',
+    modeSelfHosted: 'Self-hosted',
+    // Honest, per-platform caveats for on-device recognition.
+    localCaveatIos:
+      "On-device dictation uses Apple's Speech framework — audio never leaves your iPhone and no API key is needed. Accuracy depends on your device and iOS version, and it needs the Speech Recognition permission. If your language isn't supported on-device, use a Remote provider instead.",
+    localCaveatAndroid:
+      "On-device dictation uses Android's built-in recognizer — audio stays on your phone and no API key is needed. Availability and accuracy depend on your device, and it may require installing an offline language pack (Settings → speech/voice input). If on-device speech isn't installed, use a Remote provider instead.",
+    // Privacy implication when cleanup is left on in local mode.
+    localCleanupPrivacy:
+      'Note: transcription is on-device, but Cleanup still sends the transcript text to the cleanup provider you configured. Turn Cleanup off to keep everything on your device.',
+    testLocal: 'Test on-device recognition',
+    testLocalListening: 'Listening for 2s — speak now…',
     provider: 'Provider',
     baseUrl: 'Base URL',
     model: 'Model',

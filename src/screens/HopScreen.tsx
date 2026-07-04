@@ -89,6 +89,9 @@ export function HopScreen({
           <>
             <MicButton status={state.status} onPress={() => void stop()} />
             <Text style={styles.status}>{strings.hop.listening}</Text>
+            {state.partialText ? (
+              <Text style={styles.partial}>{state.partialText}</Text>
+            ) : null}
           </>
         ) : null}
 
@@ -144,6 +147,13 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   status: { color: colors.textDim, fontSize: font.body, textAlign: 'center' },
+  partial: {
+    color: colors.textFaint,
+    fontSize: font.small,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    paddingHorizontal: spacing.lg,
+  },
   doneGlyph: { color: colors.success, fontSize: 72, fontWeight: '800' },
   doneTitle: { color: colors.text, fontSize: font.title, fontWeight: '800' },
   doneBody: { textAlign: 'center' },

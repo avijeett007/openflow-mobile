@@ -63,6 +63,9 @@ export function HomeScreen(): React.ReactElement {
         >
           {statusLine}
         </Text>
+        {state.status === 'recording' && state.partialText ? (
+          <Text style={styles.partial}>{state.partialText}</Text>
+        ) : null}
       </View>
 
       {state.status === 'ready' || (state.status === 'error' && state.rawText) ? (
@@ -111,6 +114,13 @@ const styles = StyleSheet.create({
   header: { alignItems: 'center', marginBottom: spacing.sm },
   micArea: { alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xl },
   status: { color: colors.textDim, fontSize: font.body, textAlign: 'center' },
+  partial: {
+    color: colors.textFaint,
+    fontSize: font.small,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    paddingHorizontal: spacing.lg,
+  },
   block: { gap: spacing.xs },
   blockLabel: {
     color: colors.textFaint,

@@ -39,7 +39,7 @@ platform secure storage (Keychain / EncryptedSharedPreferences) using the
 
 Shapes:
 ```ts
-SttSettings     { mode: 'remote'|'selfHosted', provider: 'groq'|'openai'|'deepgram'|'custom',
+SttSettings     { mode: 'local'|'remote'|'selfHosted', provider: 'groq'|'openai'|'deepgram'|'custom',
                   baseUrl?: string, model: string, apiKeyRef: string }
 CleanupSettings { enabled: boolean, provider: 'groq'|'openai'|'openrouter'|'ollama'|'custom',
                   baseUrl?: string, model: string, apiKeyRef: string, promptId: string }
@@ -47,6 +47,17 @@ Prompt          { id: string, name: string, prompt: string }
 PrivacyMode     'full' | 'keywordsOnly' | 'off'
 Settings        { version: 1, stt, cleanup, prompts: Prompt[], privacyMode }
 ```
+
+**STT `mode`** (additive, `SETTINGS_VERSION` unchanged at `1`):
+- `local` — on-device platform recognizer (iOS `SFSpeechRecognizer`, Android
+  `SpeechRecognizer`). No API key, no network. When `mode === 'local'` the
+  `provider` / `baseUrl` / `model` / `apiKeyRef` fields are **irrelevant**; the
+  schema still fills them from defaults so a `{ mode: 'local' }` payload parses
+  and the persisted shape stays stable for the **Kotlin IME mirror** (the IME's
+  only contract is `stt.mode === "local"`). Cleanup is unchanged and still runs
+  in local mode if the user enabled it.
+- `remote` — hosted provider over the network (default).
+- `selfHosted` — user-hosted OpenAI-compatible endpoint (custom `baseUrl`).
 
 ### STT
 - `transcribe(opts): Promise<{ text: string }>`

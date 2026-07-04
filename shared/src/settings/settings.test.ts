@@ -51,6 +51,42 @@ describe('parse / roundtrip', () => {
   });
 });
 
+describe('local STT mode', () => {
+  it('parses mode "local" with none of the remote fields present, filling defaults', () => {
+    const s = parseSettings({ stt: { mode: 'local' } });
+    expect(s.stt.mode).toBe('local');
+    // Irrelevant-in-local fields are still populated by their defaults so the
+    // persisted shape stays stable for the Kotlin IME mirror.
+    expect(s.stt.provider).toBe('groq');
+    expect(s.stt.model).toBe('whisper-large-v3-turbo');
+    expect(s.stt.apiKeyRef).toBe('stt.apiKey');
+    expect(s.stt.baseUrl).toBeUndefined();
+  });
+
+  it('accepts "local" as a valid mode alongside remote / selfHosted', () => {
+    expect(parseSettings({ stt: { mode: 'remote' } }).stt.mode).toBe('remote');
+    expect(parseSettings({ stt: { mode: 'selfHosted' } }).stt.mode).toBe('selfHosted');
+    expect(parseSettings({ stt: { mode: 'local' } }).stt.mode).toBe('local');
+  });
+
+  it('rejects an unknown mode', () => {
+    expect(() => parseSettings({ stt: { mode: 'ondevice' } })).toThrow(ConfigError);
+  });
+
+  it('migrates a bare local payload to full defaults without a version bump', () => {
+    const migrated = migrateSettings({ stt: { mode: 'local' } });
+    expect(migrated.version).toBe(SETTINGS_VERSION);
+    expect(migrated.stt.mode).toBe('local');
+    expect(migrated.cleanup.enabled).toBe(true); // cleanup still available in local mode
+  });
+
+  it('roundtrips a local-mode settings object through serialize', () => {
+    const local = { ...defaultSettings(), stt: { ...defaultSettings().stt, mode: 'local' as const } };
+    expect(serializeSettings(local)).toEqual(local);
+    expect(parseSettings(local)).toEqual(local);
+  });
+});
+
 describe('migrate', () => {
   it('fills defaults for an empty object', () => {
     expect(migrateSettings({})).toEqual(defaultSettings());
