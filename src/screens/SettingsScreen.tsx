@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import {
   type CleanupProvider,
   type CleanupSettings,
@@ -13,6 +13,7 @@ import {
 import { Body, Button, Choice, Field, Screen, Section, Title, Toggle } from '../components/ui';
 import { useAppState } from '../context/AppState';
 import { getSecret, setSecret } from '../lib/secrets';
+import { runLocalSttTest } from '../lib/localStt';
 import { testCleanupConnection, testSttConnection, type TestResult } from '../lib/testConnection';
 import { colors, font, spacing } from '../theme';
 import { strings } from '../strings';
@@ -87,6 +88,13 @@ export function SettingsScreen(): React.ReactElement {
     setSttTest(await testSttConnection(draft.stt, sttKey));
     setSttTesting(false);
   };
+  const runLocalTest = async () => {
+    setSttTesting(true);
+    setSttTest(undefined);
+    const res = await runLocalSttTest();
+    setSttTest({ ok: res.ok, detail: res.detail });
+    setSttTesting(false);
+  };
   const runCleanupTest = async () => {
     setCleanupTesting(true);
     setCleanupTest(undefined);
@@ -94,9 +102,13 @@ export function SettingsScreen(): React.ReactElement {
     setCleanupTesting(false);
   };
 
-  const showSttBaseUrl = draft.stt.provider === 'custom' || draft.stt.mode === 'selfHosted';
+  const isLocal = draft.stt.mode === 'local';
+  const showSttBaseUrl =
+    !isLocal && (draft.stt.provider === 'custom' || draft.stt.mode === 'selfHosted');
   const showCleanupBaseUrl =
     draft.cleanup.provider === 'custom' || draft.cleanup.provider === 'ollama';
+  const localCaveat =
+    Platform.OS === 'android' ? strings.settings.localCaveatAndroid : strings.settings.localCaveatIos;
 
   return (
     <Screen>
@@ -107,51 +119,73 @@ export function SettingsScreen(): React.ReactElement {
           label={strings.settings.mode}
           value={draft.stt.mode}
           options={[
-            { value: 'remote', label: 'Remote' },
-            { value: 'selfHosted', label: 'Self-hosted' },
+            { value: 'local', label: strings.settings.modeLocal },
+            { value: 'remote', label: strings.settings.modeRemote },
+            { value: 'selfHosted', label: strings.settings.modeSelfHosted },
           ]}
-          onChange={(mode) => patchStt({ mode })}
+          onChange={(mode) => {
+            setSttTest(undefined);
+            patchStt({ mode });
+          }}
         />
-        <Choice<SttProvider>
-          label={strings.settings.provider}
-          value={draft.stt.provider}
-          options={STT_PROVIDERS}
-          onChange={(provider) => patchStt({ provider })}
-        />
-        {showSttBaseUrl ? (
-          <Field
-            label={strings.settings.baseUrl}
-            value={draft.stt.baseUrl ?? ''}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            placeholder="https://your-endpoint/v1"
-            onChangeText={(t) => patchStt({ baseUrl: t.trim() === '' ? undefined : t.trim() })}
-          />
-        ) : null}
-        <Field
-          label={strings.settings.model}
-          value={draft.stt.model}
-          autoCapitalize="none"
-          autoCorrect={false}
-          onChangeText={(model) => patchStt({ model })}
-        />
-        <Field
-          label={strings.settings.apiKey}
-          value={sttKey}
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder={strings.settings.apiKeyPlaceholder}
-          onChangeText={setSttKey}
-        />
-        <Button
-          label={sttTesting ? strings.settings.testing : strings.onboarding.backend.testStt}
-          onPress={runSttTest}
-          variant="secondary"
-          loading={sttTesting}
-        />
-        <TestRow result={sttTest} />
+        {isLocal ? (
+          <>
+            <Body dim>{localCaveat}</Body>
+            {draft.cleanup.enabled ? (
+              <Text style={styles.privacyNote}>{strings.settings.localCleanupPrivacy}</Text>
+            ) : null}
+            <Button
+              label={sttTesting ? strings.settings.testLocalListening : strings.settings.testLocal}
+              onPress={runLocalTest}
+              variant="secondary"
+              loading={sttTesting}
+            />
+            <TestRow result={sttTest} />
+          </>
+        ) : (
+          <>
+            <Choice<SttProvider>
+              label={strings.settings.provider}
+              value={draft.stt.provider}
+              options={STT_PROVIDERS}
+              onChange={(provider) => patchStt({ provider })}
+            />
+            {showSttBaseUrl ? (
+              <Field
+                label={strings.settings.baseUrl}
+                value={draft.stt.baseUrl ?? ''}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                placeholder="https://your-endpoint/v1"
+                onChangeText={(t) => patchStt({ baseUrl: t.trim() === '' ? undefined : t.trim() })}
+              />
+            ) : null}
+            <Field
+              label={strings.settings.model}
+              value={draft.stt.model}
+              autoCapitalize="none"
+              autoCorrect={false}
+              onChangeText={(model) => patchStt({ model })}
+            />
+            <Field
+              label={strings.settings.apiKey}
+              value={sttKey}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder={strings.settings.apiKeyPlaceholder}
+              onChangeText={setSttKey}
+            />
+            <Button
+              label={sttTesting ? strings.settings.testing : strings.onboarding.backend.testStt}
+              onPress={runSttTest}
+              variant="secondary"
+              loading={sttTesting}
+            />
+            <TestRow result={sttTest} />
+          </>
+        )}
       </Section>
 
       <Section title={strings.settings.cleanupSection}>
@@ -319,4 +353,5 @@ function PromptEditor({
 const styles = StyleSheet.create({
   testLine: { fontSize: font.small },
   builtInNote: { color: colors.textFaint, fontSize: font.tiny },
+  privacyNote: { color: colors.warning, fontSize: font.small },
 });

@@ -54,6 +54,25 @@ const config: ExpoConfig = {
     ],
     // Keychain / Keystore-backed API-key storage (expo-secure-store).
     'expo-secure-store',
+    // Local (on-device) STT — iOS SFSpeechRecognizer (on-device recognition) and
+    // Android's built-in SpeechRecognizer. Owns NSSpeechRecognitionUsageDescription
+    // (iOS). It also touches NSMicrophoneUsageDescription, but only via
+    // `props || existing || default`, so expo-audio (above) remains the single
+    // owner of the mic string — no duplicate-key conflict. Android manifest gets
+    // the Google speech-service package visibility <queries> entry. No API key,
+    // no network, no model download; see docs/NOTES-LOCAL-STT.md.
+    [
+      'expo-speech-recognition',
+      {
+        speechRecognitionPermission:
+          'OpenFlow uses on-device speech recognition to transcribe your dictation locally, without sending audio to any server.',
+        // This plugin also writes NSMicrophoneUsageDescription and wins on plugin
+        // ordering, so mirror expo-audio's mic copy here to keep the honest,
+        // single-sourced string (otherwise it reverts to the generic default).
+        microphonePermission:
+          'OpenFlow records your voice only while you are dictating, then transcribes it.',
+      },
+    ],
   ],
 };
 

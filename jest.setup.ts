@@ -42,3 +42,19 @@ jest.mock('expo-file-system', () => ({
   readAsStringAsync: jest.fn(async () => ''),
   EncodingType: { Base64: 'base64' },
 }));
+
+// expo-speech-recognition — native on-device recognizer. Under Jest there is no
+// native module, so `isRecognitionAvailable`/`supportsOnDeviceRecognition` return
+// false (local mode reports "unavailable" — never silently hits the cloud).
+jest.mock('expo-speech-recognition', () => ({
+  ExpoSpeechRecognitionModule: {
+    isRecognitionAvailable: jest.fn(() => false),
+    supportsOnDeviceRecognition: jest.fn(() => false),
+    getPermissionsAsync: jest.fn(async () => ({ granted: false })),
+    requestPermissionsAsync: jest.fn(async () => ({ granted: false })),
+    start: jest.fn(),
+    stop: jest.fn(),
+    abort: jest.fn(),
+  },
+  addSpeechRecognitionListener: jest.fn(() => ({ remove: jest.fn() })),
+}));

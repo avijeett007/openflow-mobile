@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
-import { type CleanupProvider, type SttProvider } from '@openflow/shared';
+import { type CleanupProvider, type SttMode, type SttProvider } from '@openflow/shared';
 import { Body, Button, Choice, Field, Screen, Section, Title, Toggle } from '../../components/ui';
 import { Wordmark } from '../../components/Wordmark';
 import { useAppState } from '../../context/AppState';
+import { runLocalSttTest } from '../../lib/localStt';
 import { setSecret } from '../../lib/secrets';
 import {
   testCleanupConnection,
@@ -53,6 +54,7 @@ export function OnboardingFlow(): React.ReactElement {
   const [step, setStep] = useState(0);
 
   // Backend draft (step 3).
+  const [sttMode, setSttMode] = useState<SttMode>(settings.stt.mode);
   const [sttProvider, setSttProvider] = useState<SttProvider>(settings.stt.provider);
   const [cleanupEnabled, setCleanupEnabled] = useState(settings.cleanup.enabled);
   const [cleanupProvider, setCleanupProvider] = useState<CleanupProvider>(
@@ -70,7 +72,7 @@ export function OnboardingFlow(): React.ReactElement {
     await setSecret(settings.cleanup.apiKeyRef, cleanupKey);
     await updateSettings({
       ...settings,
-      stt: { ...settings.stt, provider: sttProvider },
+      stt: { ...settings.stt, mode: sttMode, provider: sttProvider },
       cleanup: { ...settings.cleanup, enabled: cleanupEnabled, provider: cleanupProvider },
     });
     await completeOnboarding();
@@ -133,29 +135,65 @@ export function OnboardingFlow(): React.ReactElement {
       <Body dim>{strings.onboarding.backend.body}</Body>
 
       <Section title={strings.settings.sttSection}>
-        <Choice<SttProvider>
-          label={strings.settings.provider}
-          value={sttProvider}
-          options={STT_PROVIDERS}
-          onChange={setSttProvider}
+        <Choice<SttMode>
+          label={strings.settings.mode}
+          value={sttMode}
+          options={[
+            { value: 'local', label: strings.settings.modeLocal },
+            { value: 'remote', label: strings.settings.modeRemote },
+            { value: 'selfHosted', label: strings.settings.modeSelfHosted },
+          ]}
+          onChange={(mode) => {
+            setSttTest(undefined);
+            setSttMode(mode);
+          }}
         />
-        <Field
-          label={strings.settings.apiKey}
-          value={sttKey}
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder={strings.settings.apiKeyPlaceholder}
-          onChangeText={setSttKey}
-        />
-        <Button
-          label={strings.onboarding.backend.testStt}
-          variant="secondary"
-          onPress={async () =>
-            setSttTest(await testSttConnection({ ...settings.stt, provider: sttProvider }, sttKey))
-          }
-        />
-        <TestRow result={sttTest} />
+        {sttMode === 'local' ? (
+          <>
+            <Body dim>
+              {Platform.OS === 'android'
+                ? strings.settings.localCaveatAndroid
+                : strings.settings.localCaveatIos}
+            </Body>
+            <Button
+              label={strings.settings.testLocal}
+              variant="secondary"
+              onPress={async () => {
+                const res = await runLocalSttTest();
+                setSttTest({ ok: res.ok, detail: res.detail });
+              }}
+            />
+            <TestRow result={sttTest} />
+          </>
+        ) : (
+          <>
+            <Choice<SttProvider>
+              label={strings.settings.provider}
+              value={sttProvider}
+              options={STT_PROVIDERS}
+              onChange={setSttProvider}
+            />
+            <Field
+              label={strings.settings.apiKey}
+              value={sttKey}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder={strings.settings.apiKeyPlaceholder}
+              onChangeText={setSttKey}
+            />
+            <Button
+              label={strings.onboarding.backend.testStt}
+              variant="secondary"
+              onPress={async () =>
+                setSttTest(
+                  await testSttConnection({ ...settings.stt, provider: sttProvider }, sttKey),
+                )
+              }
+            />
+            <TestRow result={sttTest} />
+          </>
+        )}
       </Section>
 
       <Section title={strings.settings.cleanupSection}>

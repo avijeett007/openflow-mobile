@@ -2,10 +2,15 @@ import { defaultSettings, type Settings } from '@openflow/shared';
 import {
   type DictationAction,
   type DictationDeps,
+  LOCAL_PERMISSION_ERROR,
+  ON_DEVICE_PROVIDER,
   dictationReducer,
   initialDictationState,
   processClip,
+  processLocalTranscript,
+  startLocalSession,
 } from './useDictation';
+import type { LocalStt } from '../lib/localStt';
 import type { AppHistoryRecord } from '../lib/historyStore';
 import type { RecordedClip } from '../lib/recorder';
 
@@ -169,5 +174,137 @@ describe('processClip', () => {
     expect(saved[0].cleanedText).toBeUndefined();
     expect(saved[0].wordCount).toBe(2);
     expect(saved[0].privacyMode).toBe('keywordsOnly');
+  });
+});
+
+// ---- Local (on-device) path -----------------------------------------------
+
+function localSettings(overrides: Partial<Settings['cleanup']> = {}): Settings {
+  const s = defaultSettings();
+  s.stt.mode = 'local';
+  s.cleanup = { ...s.cleanup, ...overrides };
+  return s;
+}
+
+function makeRecognizer(overrides: Partial<LocalStt> = {}): jest.Mocked<LocalStt> {
+  return {
+    isAvailable: jest.fn(async () => ({ available: true })),
+    requestPermission: jest.fn(async () => true),
+    start: jest.fn(async () => undefined),
+    stop: jest.fn(async () => ({ transcript: 'hello from device' })),
+    cancel: jest.fn(async () => undefined),
+    ...overrides,
+  } as jest.Mocked<LocalStt>;
+}
+
+describe('processLocalTranscript', () => {
+  function collectDispatch() {
+    const actions: DictationAction[] = [];
+    return { actions, dispatch: (a: DictationAction) => actions.push(a) };
+  }
+
+  it('cleans the on-device transcript and records sttProvider "on-device"', async () => {
+    const { deps, saved } = makeDeps({ settings: localSettings() });
+    const { actions, dispatch } = collectDispatch();
+
+    const result = await processLocalTranscript('  hello from device  ', 4200, deps, dispatch, {
+      appContext: 'app',
+    });
+
+    expect(result.status).toBe('ready');
+    expect(result.cleanedText).toBe('Hello, world.');
+    // No audio clip is ever uploaded — the shared `transcribe` client is untouched.
+    expect(deps.transcribe).not.toHaveBeenCalled();
+    expect(actions.map((a) => a.type)).toEqual([
+      'TRANSCRIBING',
+      'TRANSCRIBED',
+      'CLEANING',
+      'READY',
+    ]);
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({
+      rawText: 'hello from device',
+      cleanedText: 'Hello, world.',
+      sttProvider: ON_DEVICE_PROVIDER,
+      durationMs: 4200,
+      appContext: 'app',
+    });
+  });
+
+  it('skips cleanup when disabled and still records on-device', async () => {
+    const { deps, saved } = makeDeps({ settings: localSettings({ enabled: false }) });
+    const { actions, dispatch } = collectDispatch();
+
+    await processLocalTranscript('just raw text', 1000, deps, dispatch);
+
+    expect(actions.map((a) => a.type)).toEqual(['TRANSCRIBING', 'TRANSCRIBED', 'READY']);
+    expect(deps.cleanTranscript).not.toHaveBeenCalled();
+    expect(saved[0].sttProvider).toBe(ON_DEVICE_PROVIDER);
+    expect(saved[0].cleanedText).toBeUndefined();
+  });
+});
+
+describe('startLocalSession', () => {
+  function collectDispatch() {
+    const actions: DictationAction[] = [];
+    return { actions, dispatch: (a: DictationAction) => actions.push(a) };
+  }
+
+  it('starts recognition and enters recording when available + permitted', async () => {
+    const recognizer = makeRecognizer();
+    const { actions, dispatch } = collectDispatch();
+
+    const started = await startLocalSession(recognizer, dispatch);
+
+    expect(started).toBe(true);
+    expect(recognizer.start).toHaveBeenCalledTimes(1);
+    expect(actions.map((a) => a.type)).toEqual(['RECORD_START']);
+  });
+
+  it('surfaces an availability error and does NOT start (no cloud fallback)', async () => {
+    const reason = 'On-device dictation is not supported on this device.';
+    const recognizer = makeRecognizer({
+      isAvailable: jest.fn(async () => ({ available: false, reason })),
+    });
+    const onError = jest.fn();
+    const { actions, dispatch } = collectDispatch();
+
+    const started = await startLocalSession(recognizer, dispatch, { onError });
+
+    expect(started).toBe(false);
+    // Critical: recognition never starts — audio is NOT sent anywhere.
+    expect(recognizer.start).not.toHaveBeenCalled();
+    expect(recognizer.requestPermission).not.toHaveBeenCalled();
+    expect(actions).toEqual([{ type: 'ERROR', error: reason }]);
+    expect(onError).toHaveBeenCalledWith(reason);
+  });
+
+  it('surfaces a permission denial without starting', async () => {
+    const recognizer = makeRecognizer({ requestPermission: jest.fn(async () => false) });
+    const { actions, dispatch } = collectDispatch();
+
+    const started = await startLocalSession(recognizer, dispatch);
+
+    expect(started).toBe(false);
+    expect(recognizer.start).not.toHaveBeenCalled();
+    expect(actions).toEqual([{ type: 'ERROR', error: LOCAL_PERMISSION_ERROR }]);
+  });
+
+  it('streams interim transcripts as PARTIAL actions', async () => {
+    const recognizer = makeRecognizer({
+      start: jest.fn(async (opts) => {
+        opts?.onPartial?.('hello');
+        opts?.onPartial?.('hello world');
+      }),
+    });
+    const { actions, dispatch } = collectDispatch();
+
+    await startLocalSession(recognizer, dispatch);
+
+    expect(actions).toEqual([
+      { type: 'PARTIAL', text: 'hello' },
+      { type: 'PARTIAL', text: 'hello world' },
+      { type: 'RECORD_START' },
+    ]);
   });
 });
