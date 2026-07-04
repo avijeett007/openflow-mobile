@@ -18,6 +18,7 @@
     "test": "npm run test --workspace @openflow/shared"
   },
   "dependencies": {
+    "@bacons/apple-targets": "4.0.7",
     "@openflow/shared": "*",
     "expo": "53.0.0",
     "expo-status-bar": "~2.2.3",

@@ -8,6 +8,10 @@ web-build/
 ios/
 android/
 
+# @bacons/apple-targets writes this into the target dir at prebuild time from
+# expo-target.config.js — regenerated every prebuild, so it is not committed.
+targets/**/generated.entitlements
+
 # native / build artifacts
 *.orig.*
 *.jks
