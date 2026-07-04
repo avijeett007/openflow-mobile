@@ -55,6 +55,20 @@ jest.mock('expo-speech-recognition', () => ({
     start: jest.fn(),
     stop: jest.fn(),
     abort: jest.fn(),
+    getSupportedLocales: jest.fn(async () => ({ locales: [], installedLocales: [] })),
+    androidTriggerOfflineModelDownload: jest.fn(async () => ({
+      status: 'download_success',
+      message: '',
+    })),
   },
   addSpeechRecognitionListener: jest.fn(() => ({ remove: jest.fn() })),
+}));
+
+// expo-speech — TTS stub. No native under Jest; the wrapper degrades to "no
+// voice installed" (`canSpeak` false) and `speak` resolves immediately.
+jest.mock('expo-speech', () => ({
+  getAvailableVoicesAsync: jest.fn(async () => []),
+  speak: jest.fn(),
+  stop: jest.fn(async () => undefined),
+  maxSpeechInputLength: 4000,
 }));

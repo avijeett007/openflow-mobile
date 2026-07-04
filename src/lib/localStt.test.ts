@@ -1,9 +1,12 @@
+import { Platform } from 'react-native';
 import {
   type LocalStt,
   type SpeechModule,
   createLocalStt,
+  getSupportedLocalesSafe,
   loadSpeechModule,
   runLocalSttTest,
+  triggerAndroidOfflineModelDownload,
 } from './localStt';
 
 type Listener = (ev: unknown) => void;
@@ -153,5 +156,133 @@ describe('loadSpeechModule', () => {
     expect(mod).not.toBeNull();
     // Jest mock reports the recognizer as unavailable under the test runner.
     expect(mod?.isRecognitionAvailable()).toBe(false);
+  });
+
+  it('wraps the optional Android locale/download methods when present', () => {
+    const mod = loadSpeechModule();
+    expect(typeof mod?.getSupportedLocales).toBe('function');
+    expect(typeof mod?.androidTriggerOfflineModelDownload).toBe('function');
+  });
+});
+
+// ---- T4: language-aware availability + Android locale wrappers -------------
+
+/** Fake module that also implements the optional Android surface. */
+function makeAndroidModule(
+  supported: { locales?: string[]; installedLocales?: string[] } = {},
+  download?: { status: string; message: string } | Error,
+): SpeechModule {
+  return {
+    isRecognitionAvailable: () => true,
+    supportsOnDeviceRecognition: () => true,
+    requestPermissionsAsync: async () => ({ granted: true }),
+    getPermissionsAsync: async () => ({ granted: true }),
+    start: () => undefined,
+    stop: () => undefined,
+    abort: () => undefined,
+    addSpeechRecognitionListener: () => ({ remove: () => undefined }),
+    getSupportedLocales: jest.fn(async () => ({
+      locales: supported.locales ?? [],
+      installedLocales: supported.installedLocales ?? [],
+    })),
+    androidTriggerOfflineModelDownload: jest.fn(async () => {
+      if (download instanceof Error) throw download;
+      return download ?? { status: 'download_success', message: 'ok' };
+    }),
+  };
+}
+
+describe('T4 — isAvailable(lang)', () => {
+  const original = Platform.OS;
+  afterEach(() => {
+    Platform.OS = original;
+  });
+
+  it('on Android, reports a language whose model is not installed as unavailable', async () => {
+    Platform.OS = 'android';
+    const mod = makeAndroidModule({ installedLocales: ['en-US'] });
+    const res = await createLocalStt(() => mod).isAvailable('es-ES');
+    expect(res.available).toBe(false);
+    expect(res.reason).toMatch(/es-ES/);
+  });
+
+  it('on Android, reports an installed language as available', async () => {
+    Platform.OS = 'android';
+    const mod = makeAndroidModule({ installedLocales: ['en-US', 'es-ES'] });
+    expect(await createLocalStt(() => mod).isAvailable('es-ES')).toEqual({ available: true });
+  });
+
+  it('fails open when enumeration is empty (API < 33) — never blocks', async () => {
+    Platform.OS = 'android';
+    const mod = makeAndroidModule({ locales: [], installedLocales: [] });
+    expect(await createLocalStt(() => mod).isAvailable('es-ES')).toEqual({ available: true });
+  });
+
+  it('does not consult locales when no lang is passed', async () => {
+    Platform.OS = 'android';
+    const mod = makeAndroidModule({ installedLocales: ['en-US'] });
+    expect(await createLocalStt(() => mod).isAvailable()).toEqual({ available: true });
+    expect(mod.getSupportedLocales).not.toHaveBeenCalled();
+  });
+
+  it('on iOS, does not use Android locale enumeration', async () => {
+    Platform.OS = 'ios';
+    const mod = makeAndroidModule({ installedLocales: ['en-US'] });
+    expect(await createLocalStt(() => mod).isAvailable('es-ES')).toEqual({ available: true });
+    expect(mod.getSupportedLocales).not.toHaveBeenCalled();
+  });
+});
+
+describe('T4 — getSupportedLocalesSafe', () => {
+  const original = Platform.OS;
+  afterEach(() => {
+    Platform.OS = original;
+  });
+
+  it('returns locales on Android', async () => {
+    Platform.OS = 'android';
+    const mod = makeAndroidModule({ locales: ['en-US', 'es-ES'], installedLocales: ['en-US'] });
+    expect(await getSupportedLocalesSafe(() => mod)).toEqual({
+      locales: ['en-US', 'es-ES'],
+      installedLocales: ['en-US'],
+    });
+  });
+
+  it('returns null on iOS (callers use the translator module instead)', async () => {
+    Platform.OS = 'ios';
+    expect(await getSupportedLocalesSafe(() => makeAndroidModule())).toBeNull();
+  });
+
+  it('returns null when the module is missing', async () => {
+    Platform.OS = 'android';
+    expect(await getSupportedLocalesSafe(() => null)).toBeNull();
+  });
+});
+
+describe('T4 — triggerAndroidOfflineModelDownload', () => {
+  const original = Platform.OS;
+  afterEach(() => {
+    Platform.OS = original;
+  });
+
+  it('reports ok on a successful download', async () => {
+    Platform.OS = 'android';
+    const mod = makeAndroidModule({}, { status: 'download_success', message: 'done' });
+    const res = await triggerAndroidOfflineModelDownload('es-ES', () => mod);
+    expect(res.ok).toBe(true);
+    expect(res.status).toBe('download_success');
+  });
+
+  it('treats a user cancel as not-ok', async () => {
+    Platform.OS = 'android';
+    const mod = makeAndroidModule({}, { status: 'download_canceled', message: '' });
+    expect((await triggerAndroidOfflineModelDownload('es-ES', () => mod)).ok).toBe(false);
+  });
+
+  it('is Android-only', async () => {
+    Platform.OS = 'ios';
+    const res = await triggerAndroidOfflineModelDownload('es-ES', () => makeAndroidModule());
+    expect(res.ok).toBe(false);
+    expect(res.message).toMatch(/android/i);
   });
 });
