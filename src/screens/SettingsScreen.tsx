@@ -73,6 +73,8 @@ export function SettingsScreen(): React.ReactElement {
     setDraft((d) => ({ ...d, stt: { ...d.stt, ...patch } }));
   const patchCleanup = (patch: Partial<CleanupSettings>) =>
     setDraft((d) => ({ ...d, cleanup: { ...d.cleanup, ...patch } }));
+  const patchTranslator = (patch: Partial<Settings['translator']>) =>
+    setDraft((d) => ({ ...d, translator: { ...d.translator, ...patch } }));
 
   const save = async () => {
     await setSecret(draft.stt.apiKeyRef, sttKey);
@@ -263,6 +265,15 @@ export function SettingsScreen(): React.ReactElement {
           options={PRIVACY_OPTIONS}
           onChange={(privacyMode) => setDraft((d) => ({ ...d, privacyMode }))}
         />
+      </Section>
+
+      <Section title={strings.settings.translatorSection}>
+        <Toggle
+          label={strings.settings.translatorAutoDetect}
+          value={draft.translator.autoDetect}
+          onChange={(autoDetect) => patchTranslator({ autoDetect })}
+        />
+        <Body dim>{strings.settings.translatorAutoDetectHint}</Body>
       </Section>
 
       <Button label={saved ? strings.settings.saved : strings.settings.save} onPress={save} />
