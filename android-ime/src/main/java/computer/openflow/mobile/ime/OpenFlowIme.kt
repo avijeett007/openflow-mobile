@@ -24,18 +24,28 @@ import java.util.concurrent.Executors
 /**
  * OpenFlow Android voice keyboard.
  *
- * Flow (flagship, no container-app hop — Android IMEs may record directly):
- *   tap mic → ensure RECORD_AUDIO → [WavRecorder] 16 kHz mono → tap again to stop
- *   → [OpenFlowHttp.transcribe] → optional [OpenFlowHttp.cleanTranscript] →
- *   currentInputConnection.commitText(text, 1). Status + errors shown inline.
+ * Two dictation flows, selected per-tap from the persisted `stt.mode` (see
+ * [LocalSttLogic.decideSttPath]):
  *
- * Settings + API keys come from [SettingsBridgeStore] (written by the app's
- * `settings-bridge` local module; same UID, so a plain read).
+ *  - **Remote / self-hosted** (default; `mode` remote/selfHosted/unknown/missing):
+ *    tap mic → ensure RECORD_AUDIO → [WavRecorder] 16 kHz mono → tap again to stop
+ *    → [OpenFlowHttp.transcribe] → optional [OpenFlowHttp.cleanTranscript] →
+ *    `commitText`. Requires an STT API key. Unchanged from before.
+ *  - **Local (on-device)** (`mode == "local"`): tap mic → [LocalSttEngine]
+ *    (Android `SpeechRecognizer`, no recording/HTTP, NO API key) → live partial
+ *    text in the status area → second tap finishes early → optional cleanup (only
+ *    if enabled AND a cleanup key is present) → `commitText`.
+ *
+ * Status + errors are shown inline. Settings + API keys come from
+ * [SettingsBridgeStore] (written by the app's `settings-bridge` local module;
+ * same UID, so a plain read).
  */
 class OpenFlowIme : InputMethodService() {
   private enum class Status { IDLE, RECORDING, TRANSCRIBING, CLEANING, ERROR }
 
   private val recorder = WavRecorder()
+  /** On-device recognizer for `stt.mode == "local"`; created lazily, main-thread only. */
+  private var localEngine: LocalSttEngine? = null
   private val mainHandler = Handler(Looper.getMainLooper())
   private lateinit var executor: ExecutorService
   private val store by lazy { SettingsBridgeStore(applicationContext) }
@@ -54,8 +64,16 @@ class OpenFlowIme : InputMethodService() {
 
   override fun onCreateInputView(): View = buildKeyboardView()
 
+  /** IME hidden / input finished: stop any in-flight on-device recognition so it never leaks. */
+  override fun onFinishInputView(finishingInput: Boolean) {
+    localEngine?.cancel()
+    super.onFinishInputView(finishingInput)
+  }
+
   override fun onDestroy() {
     recorder.cancel()
+    localEngine?.cancel()
+    localEngine = null
     executor.shutdownNow()
     super.onDestroy()
   }
@@ -145,7 +163,23 @@ class OpenFlowIme : InputMethodService() {
 
   // ---- Interactions --------------------------------------------------------
 
+  /**
+   * Mic tap dispatcher. Branches on the persisted `stt.mode`: `"local"` runs the
+   * on-device [LocalSttEngine] flow (no recording/HTTP, no API key); everything
+   * else (remote / self-hosted / unknown / missing) keeps the existing
+   * record-WAV + HTTP path. See [LocalSttLogic.decideSttPath].
+   */
   private fun onMicTapped() {
+    val settingsJson = store.getSettingsJson()
+    when (LocalSttLogic.decideSttPath(settingsJson)) {
+      LocalSttLogic.SttPath.LOCAL -> onMicTappedLocal(settingsJson)
+      LocalSttLogic.SttPath.REMOTE -> onMicTappedRemote()
+    }
+  }
+
+  // ---- Remote / self-hosted path (unchanged: record WAV → HTTP) ------------
+
+  private fun onMicTappedRemote() {
     if (recorder.isRecording) {
       stopAndProcess()
       return
@@ -161,6 +195,106 @@ class OpenFlowIme : InputMethodService() {
       setStatus(Status.RECORDING, "Listening… tap to stop")
     } catch (e: Exception) {
       setStatus(Status.ERROR, "Could not start recording")
+    }
+  }
+
+  // ---- Local (on-device) path ---------------------------------------------
+
+  /**
+   * On-device flow: first tap starts listening (live partial text shown in the
+   * status area); a second tap while listening finishes early. On the final
+   * result we optionally run cleanup, then `commitText`. No API key is required
+   * for transcription in this mode.
+   */
+  private fun onMicTappedLocal(settingsJson: String?) {
+    if (localEngine?.isListening == true) {
+      // Second tap → early finish; the engine still delivers the final result.
+      setStatus(Status.TRANSCRIBING, "Finishing…")
+      localEngine?.stop()
+      return
+    }
+    if (!hasMicPermission()) {
+      setStatus(Status.ERROR, "Grant microphone access in OpenFlow, then return")
+      openApp("mic-permission")
+      return
+    }
+    if (LocalSttEngine.availability(applicationContext) == LocalSttEngine.Availability.UNAVAILABLE) {
+      setStatus(Status.ERROR, "On-device recognition unavailable on this phone")
+      return
+    }
+    hideInsertRaw()
+    pendingRawTranscript = null
+    startLocalListening(settingsJson)
+  }
+
+  /** Create/reuse the engine and start listening. Callbacks arrive on the main thread. */
+  private fun startLocalListening(settingsJson: String?) {
+    val engine = localEngine ?: LocalSttEngine(applicationContext).also { localEngine = it }
+    setStatus(Status.RECORDING, "Listening… tap to stop")
+    engine.start(object : LocalSttEngine.Callbacks {
+      override fun onPartial(text: String) {
+        // Show the live hypothesis in the status area; never commit a partial.
+        if (text.isNotBlank()) setStatus(Status.RECORDING, text)
+      }
+
+      override fun onFinal(text: String) {
+        onLocalFinal(settingsJson, text)
+      }
+
+      override fun onError(code: Int, message: String) {
+        setStatus(Status.ERROR, message)
+      }
+    })
+  }
+
+  /**
+   * Handle the final on-device transcript. Empty → "didn't catch that". Otherwise
+   * gate cleanup on [LocalSttLogic.shouldRunCleanup] (cleanup enabled AND a
+   * cleanup key present / keyless provider): run cleanup on the executor, else
+   * commit the raw transcript directly.
+   */
+  private fun onLocalFinal(settingsJson: String?, finalText: String) {
+    val text = finalText.trim()
+    if (text.isEmpty()) {
+      setStatus(Status.IDLE, LocalSttLogic.errorMessage(LocalSttLogic.ERROR_NO_MATCH))
+      return
+    }
+
+    val cleanup = try {
+      settingsJson?.let { OpenFlowHttp.parseCleanup(it) }
+    } catch (e: Exception) {
+      null
+    }
+    val cleanupKey = cleanup?.let { store.getSecret(it.apiKeyRef) }.orEmpty()
+    // Keyless providers (e.g. Ollama) legitimately run cleanup with no secret.
+    val hasCleanupKey = cleanupKey.isNotEmpty() || cleanup?.provider == "ollama"
+
+    if (cleanup == null || !LocalSttLogic.shouldRunCleanup(cleanup.enabled, hasCleanupKey)) {
+      currentInputConnection?.commitText(text, 1)
+      setStatus(Status.IDLE, "Done — tap the mic to dictate again")
+      return
+    }
+
+    // Cleanup is a network LLM call; run it off the main thread.
+    setStatus(Status.CLEANING, "Cleaning up…")
+    pendingRawTranscript = text
+    val json = settingsJson ?: return
+    executor.execute {
+      val cleaned: String = try {
+        OpenFlowHttp.cleanTranscript(json, cleanupKey, text)
+      } catch (e: Exception) {
+        // Best-effort cleanup: keep the raw transcript reachable via the button.
+        mainHandler.post {
+          setStatus(Status.ERROR, "Cleanup failed — insert the raw transcript?")
+          showInsertRaw()
+        }
+        return@execute
+      }
+      mainHandler.post {
+        currentInputConnection?.commitText(cleaned, 1)
+        pendingRawTranscript = null
+        setStatus(Status.IDLE, "Done — tap the mic to dictate again")
+      }
     }
   }
 

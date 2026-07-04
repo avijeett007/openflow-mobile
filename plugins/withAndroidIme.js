@@ -7,7 +7,9 @@
  *       AndroidManifest with `BIND_INPUT_METHOD`, the `android.view.InputMethod`
  *       intent-filter, and the `android.view.im` meta-data pointing at
  *       `@xml/method`;
- *   (b) adds the RECORD_AUDIO + INTERNET permissions;
+ *   (b) adds the RECORD_AUDIO + INTERNET permissions and a `<queries>` entry for
+ *       `android.speech.RecognitionService` (Android 11+ package visibility so the
+ *       on-device `stt.mode="local"` engine is discoverable);
  *   (c) copies the authored Kotlin sources from `android-ime/src/main/**` and the
  *       JVM contract tests from `android-ime/src/test/**` into the app module,
  *       and mirrors the shared HTTP fixtures into the unit-test resources so
@@ -38,6 +40,10 @@ const path = require('path');
 const IME_PACKAGE = 'computer.openflow.mobile.ime';
 const IME_SERVICE = `${IME_PACKAGE}.OpenFlowIme`;
 
+// Package-visibility query so the on-device (local) STT engine is reachable on
+// Android 11+ (see withImeManifest).
+const RECOGNITION_SERVICE_ACTION = 'android.speech.RecognitionService';
+
 const SECURITY_CRYPTO = 'androidx.security:security-crypto:1.1.0-alpha06';
 const JUNIT = 'junit:junit:4.13.2';
 const ORG_JSON = 'org.json:json:20240303';
@@ -57,6 +63,24 @@ function withImeManifest(config) {
       if (!existing.includes(perm)) {
         AndroidConfig.Permissions.addPermission(androidManifest, perm);
       }
+    }
+
+    // Android 11+ (API 30) package visibility: without a <queries> entry for the
+    // speech RecognitionService, SpeechRecognizer.isRecognitionAvailable() returns
+    // false and the on-device (stt.mode="local") path can't see the engine.
+    // Idempotent: only add if not already present.
+    androidManifest.manifest.queries = androidManifest.manifest.queries || [];
+    const hasRecognitionQuery = androidManifest.manifest.queries.some((q) =>
+      (q.intent || []).some((i) =>
+        (i.action || []).some(
+          (a) => a.$ && a.$['android:name'] === RECOGNITION_SERVICE_ACTION,
+        ),
+      ),
+    );
+    if (!hasRecognitionQuery) {
+      androidManifest.manifest.queries.push({
+        intent: [{ action: [{ $: { 'android:name': RECOGNITION_SERVICE_ACTION } }] }],
+      });
     }
 
     const app = AndroidConfig.Manifest.getMainApplicationOrThrow(androidManifest);
