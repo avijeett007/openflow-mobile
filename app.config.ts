@@ -27,11 +27,9 @@ const config: ExpoConfig = {
     entitlements: {
       'com.apple.security.application-groups': ['group.computer.openflow.mobile'],
     },
-    infoPlist: {
-      // Recording happens in the container app (keyboards cannot access the mic).
-      NSMicrophoneUsageDescription:
-        'OpenFlow records your voice only while you are dictating, then transcribes it.',
-    },
+    // NSMicrophoneUsageDescription is managed by the `expo-audio` plugin below
+    // (single source — keeps one owner of the key to avoid a duplicate-key
+    // prebuild warning). Recording happens in the container app, not the keyboard.
   },
   android: {
     package: 'computer.openflow.mobile',
@@ -39,11 +37,23 @@ const config: ExpoConfig = {
     // method.xml, and RECORD_AUDIO / INTERNET permissions during prebuild.
   },
   plugins: [
-    // Android IME injection (currently a no-op passthrough stub — see plugins/withAndroidIme.js).
+    // Android IME injection (adds the IME <service>, method.xml, RECORD_AUDIO /
+    // INTERNET permissions, and the settings-bridge gradle deps at prebuild).
     './plugins/withAndroidIme',
     // iOS keyboard extension (Swift) — generates the `computer.openflow.mobile.keyboard`
     // Xcode target from targets/keyboard/ at prebuild time. See targets/keyboard/README.md.
     '@bacons/apple-targets',
+    // In-app recording (16 kHz mono). Wires RECORD_AUDIO (Android) and owns the
+    // single NSMicrophoneUsageDescription (iOS) — see the ios comment above.
+    [
+      'expo-audio',
+      {
+        microphonePermission:
+          'OpenFlow records your voice only while you are dictating, then transcribes it.',
+      },
+    ],
+    // Keychain / Keystore-backed API-key storage (expo-secure-store).
+    'expo-secure-store',
   ],
 };
 
