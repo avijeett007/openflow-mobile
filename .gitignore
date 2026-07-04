@@ -1,12 +1,14 @@
 # dependencies
 node_modules/
 
-# Expo / generated native projects (CNG — not committed)
+# Expo / generated native projects (CNG — not committed).
+# Anchored to the repo root so they DON'T also ignore local Expo modules' own
+# native code (e.g. modules/settings-bridge/android, .../ios), which IS committed.
 .expo/
 dist/
 web-build/
-ios/
-android/
+/ios/
+/android/
 
 # @bacons/apple-targets writes this into the target dir at prebuild time from
 # expo-target.config.js — regenerated every prebuild, so it is not committed.
