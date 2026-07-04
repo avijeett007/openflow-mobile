@@ -53,6 +53,16 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full technical spec o
 - **Privacy modes.** Choose how much detail history keeps: full text, keywords-only, or off
   entirely.
 - **Custom prompts.** Override the cleanup prompt globally, per-provider, or add your own.
+- **Offline Live Translation (v0.3).** A face-to-face "Translate" tab: pick two languages, each
+  person taps their mic, and speech is recognized, translated, and shown big on the counterpart's
+  side — fully **on-device and offline** once the language packs are downloaded, with no API key and
+  no cloud round-trip. It's honestly constrained: translation uses Apple's Translation framework on
+  **iOS 18 or later** (older iOS shows an explainer and everything else keeps working; the iOS
+  Simulator can't translate — it's device-only), and Google's ML Kit on Android, which **requires
+  Google Play services** (de-Googled phones can't download packs — the app says so). Apple offers
+  ~19–20 languages versus ML Kit's 59, iOS packs are system-managed, and per ML Kit's terms Android
+  shows a **"Translations powered by Google"** attribution. Optional on-device text-to-speech reads
+  the translation aloud.
 
 ## Status
 
