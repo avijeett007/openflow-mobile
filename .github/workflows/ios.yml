@@ -1,0 +1,123 @@
+name: iOS
+
+# Builds the OpenFlow app + keyboard extension for the iOS Simulator (unsigned).
+# No Apple account required: CODE_SIGNING_ALLOWED=NO. Produces a runnable .app
+# (with keyboard.appex embedded) as a downloadable artifact.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'targets/**'
+      - 'app.config.ts'
+      - 'plugins/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ios.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'targets/**'
+      - 'app.config.ts'
+      - 'plugins/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: prebuild · pod install · xcodebuild (simulator)
+    runs-on: macos-15
+    env:
+      # No Apple account yet. @bacons/apple-targets only warns when this is empty.
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          echo "Xcode: $(xcode-select -p)"
+          ruby --version
+          pod --version
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Expo prebuild (iOS, no pod install here)
+        run: npx expo prebuild -p ios --no-install
+
+      - name: CocoaPods install
+        working-directory: ios
+        run: pod install
+
+      - name: Discover scheme + workspace
+        id: xc
+        working-directory: ios
+        run: |
+          WORKSPACE=$(ls -d *.xcworkspace | head -n1)
+          echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
+          echo "Available schemes:"
+          xcodebuild -list -workspace "$WORKSPACE" || true
+
+      - name: Build app + keyboard extension (unsigned, simulator)
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace "${{ steps.xc.outputs.workspace }}" \
+            -scheme OpenFlow \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build | tee xcodebuild.log
+
+      - name: Diagnostics on failure
+        if: failure()
+        working-directory: ios
+        run: |
+          echo "=== Available schemes / targets ==="
+          xcodebuild -list -workspace "${{ steps.xc.outputs.workspace }}" || \
+            xcodebuild -list -project *.xcodeproj || true
+          echo "=== Tail of build log ==="
+          tail -n 120 xcodebuild.log || true
+
+      - name: Verify keyboard.appex is embedded
+        working-directory: ios
+        run: |
+          APP=$(find build/Build/Products -maxdepth 2 -name 'OpenFlow.app' -type d | head -n1)
+          echo "App bundle: $APP"
+          test -n "$APP"
+          APPEX="$APP/PlugIns/keyboard.appex"
+          echo "Keyboard appex: $APPEX"
+          test -d "$APPEX"
+          echo "=== keyboard.appex Info.plist RequestsOpenAccess ==="
+          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionAttributes:RequestsOpenAccess' \
+            "$APPEX/Info.plist"
+
+      - name: Package artifact
+        working-directory: ios
+        run: |
+          APP=$(find build/Build/Products -maxdepth 2 -name 'OpenFlow.app' -type d | head -n1)
+          PRODUCTS_DIR=$(dirname "$APP")
+          cd "$PRODUCTS_DIR"
+          zip -ry "$GITHUB_WORKSPACE/openflow-ios-simulator.zip" OpenFlow.app
+
+      - name: Upload simulator build
+        uses: actions/upload-artifact@v4
+        with:
+          name: openflow-ios-simulator
+          path: openflow-ios-simulator.zip
+          if-no-files-found: error
