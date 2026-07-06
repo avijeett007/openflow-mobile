@@ -94,7 +94,7 @@ class LocalSttEngine(private val context: Context) {
    * is available the caller gets [Callbacks.onError] with
    * [LocalSttLogic.ERROR_ENGINE_UNAVAILABLE] and no session starts.
    */
-  fun start(callbacks: Callbacks) {
+  fun start(callbacks: Callbacks, biasingWords: List<String> = emptyList()) {
     cancel()
     this.callbacks = callbacks
 
@@ -123,7 +123,7 @@ class LocalSttEngine(private val context: Context) {
     val preferOffline = availability == Availability.NETWORK_FALLBACK
     isListening = true
     try {
-      rec.startListening(buildIntent(preferOffline))
+      rec.startListening(buildIntent(preferOffline, biasingWords))
     } catch (e: Exception) {
       isListening = false
       callbacks.onError(
@@ -178,7 +178,7 @@ class LocalSttEngine(private val context: Context) {
     null
   }
 
-  private fun buildIntent(preferOffline: Boolean): Intent =
+  private fun buildIntent(preferOffline: Boolean, biasingWords: List<String>): Intent =
     Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
       putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
       putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
@@ -188,6 +188,18 @@ class LocalSttEngine(private val context: Context) {
       // it asks the engine to stay offline but cannot guarantee or verify it.
       if (preferOffline && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
         putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+      }
+      // L2 on-device vocabulary biasing (dictionary canonical words). The
+      // EXTRA_BIASING_STRINGS + EXTRA_ENABLE_BIASING_DEVICE_CONTEXT extras were
+      // added in API 33 (TIRAMISU); below that they don't exist, so we send
+      // nothing (a harmless no-op, and `prompted` stays false — see
+      // [LocalSttLogic.biasingPrompted]). Best-effort even on 33+: an OEM engine
+      // may ignore it. The final transcript is still corrected by the L1 pass.
+      if (biasingWords.isNotEmpty() &&
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+      ) {
+        putStringArrayListExtra(RecognizerIntent.EXTRA_BIASING_STRINGS, ArrayList(biasingWords))
+        putExtra(RecognizerIntent.EXTRA_ENABLE_BIASING_DEVICE_CONTEXT, true)
       }
     }
 
