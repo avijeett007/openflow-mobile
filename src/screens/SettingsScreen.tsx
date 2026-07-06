@@ -12,6 +12,7 @@ import {
 } from '@openflow/shared';
 import { Body, Button, Choice, Field, Screen, Section, Title, Toggle } from '../components/ui';
 import { useAppState } from '../context/AppState';
+import { DictionaryScreen } from './DictionaryScreen';
 import { getSecret, setSecret } from '../lib/secrets';
 import { runLocalSttTest } from '../lib/localStt';
 import { testCleanupConnection, testSttConnection, type TestResult } from '../lib/testConnection';
@@ -57,6 +58,11 @@ export function SettingsScreen(): React.ReactElement {
   const [cleanupTest, setCleanupTest] = useState<TestResult>();
   const [sttTesting, setSttTesting] = useState(false);
   const [cleanupTesting, setCleanupTesting] = useState(false);
+  // The Dictionary editor is a full-screen sub-view of the Settings tab
+  // (same "swap the whole screen via local state" pattern as HopScreen /
+  // OnboardingFlow in App.tsx) rather than a new tab or a nav-stack push —
+  // this app has no stack navigator, only the bottom-tab root.
+  const [showDictionary, setShowDictionary] = useState(false);
 
   // Keep draft in sync if settings load after mount.
   useEffect(() => setDraft(settings), [settings]);
@@ -110,11 +116,26 @@ export function SettingsScreen(): React.ReactElement {
   const showCleanupBaseUrl =
     draft.cleanup.provider === 'custom' || draft.cleanup.provider === 'ollama';
   const localCaveat =
-    Platform.OS === 'android' ? strings.settings.localCaveatAndroid : strings.settings.localCaveatIos;
+    Platform.OS === 'android'
+      ? strings.settings.localCaveatAndroid
+      : strings.settings.localCaveatIos;
+
+  if (showDictionary) {
+    return <DictionaryScreen onBack={() => setShowDictionary(false)} />;
+  }
 
   return (
     <Screen>
       <Title>{strings.settings.title}</Title>
+
+      <Section title={strings.settings.dictionarySection}>
+        <Body dim>{strings.settings.dictionaryExplainerShort}</Body>
+        <Button
+          label={`${strings.settings.dictionaryOpen} — ${strings.settings.dictionaryCountFmt(settings.dictionary.length)}`}
+          onPress={() => setShowDictionary(true)}
+          variant="secondary"
+        />
+      </Section>
 
       <Section title={strings.settings.sttSection}>
         <Choice<SttMode>
