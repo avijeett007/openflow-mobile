@@ -31,6 +31,13 @@ export interface LocalSttAvailability {
 export interface LocalSttStartOptions {
   /** BCP-47 language tag. Default 'en-US'. */
   lang?: string;
+  /**
+   * On-device vocabulary hints (dictionary canonical words). Maps to iOS
+   * `SFSpeechRecognitionRequest.contextualStrings` and Android
+   * `EXTRA_BIASING_STRINGS` via expo-speech-recognition. Best-effort: the OS may
+   * ignore it. Omitted / empty → no biasing sent.
+   */
+  contextualStrings?: string[];
   /** Interim (partial) transcript, streamed while listening. */
   onPartial?: (text: string) => void;
   /** A finalized segment was recognized. */
@@ -291,6 +298,7 @@ export function createLocalStt(getModule: () => SpeechModule | null = loadSpeech
         }),
       );
 
+      const hasHints = (opts.contextualStrings?.length ?? 0) > 0;
       mod.start({
         lang: opts.lang ?? 'en-US',
         interimResults: true,
@@ -298,6 +306,9 @@ export function createLocalStt(getModule: () => SpeechModule | null = loadSpeech
         // STRICTLY on-device — never send audio to the cloud.
         requiresOnDeviceRecognition: true,
         addsPunctuation: true,
+        // On-device vocabulary biasing (best-effort). Only pass when non-empty so
+        // an empty dictionary sends nothing.
+        ...(hasHints ? { contextualStrings: opts.contextualStrings } : {}),
         androidIntentOptions: {
           EXTRA_PREFER_OFFLINE: true,
         },
