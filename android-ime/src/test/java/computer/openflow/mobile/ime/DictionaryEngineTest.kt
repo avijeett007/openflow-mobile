@@ -188,6 +188,42 @@ class DictionaryEngineTest {
     DictionaryEngine.applyDictionary("hi 👋 there", listOf(entry("Hi")))
   }
 
+  // ---- Unicode whitespace tokenization (parity with TS/Rust) -----------------
+
+  @Test
+  fun aliasFiresAcrossUnicodeWhitespaceSeparators() {
+    // Plain Java `\s` is ASCII-only; NBSP (U+00A0) / ideographic space (U+3000) /
+    // narrow NBSP (U+202F) must still split "alpha beta" into two tokens so the
+    // alias matches, exactly as the TS engine (JS `\s` is Unicode-aware) and the
+    // Rust engine do. `\u` escapes used explicitly since these separators are
+    // otherwise invisible in source.
+    val entries = listOf(entry("AB", listOf("alpha beta")))
+    assertEquals("AB", DictionaryEngine.applyDictionary("alpha\u00A0beta", entries, 0.0))
+    assertEquals("AB", DictionaryEngine.applyDictionary("alpha\u3000beta", entries, 0.0))
+    assertEquals("AB", DictionaryEngine.applyDictionary("alpha\u202Fbeta", entries, 0.0))
+  }
+
+  // ---- isAlnum: Nl / No numeric categories (parity with \p{N}) ---------------
+
+  @Test
+  fun treatsLetterNumberAndOtherNumberCodePointsAsAlphanumeric() {
+    // \u2167 (Ⅷ, ROMAN NUMERAL EIGHT) is category Nl (LETTER_NUMBER);
+    // Character.isDigit only covers Nd, so this alias would previously trim to
+    // empty and never match. Exercised indirectly via trimNonAlnum/
+    // extractPunctuation inside applyDictionary (both private). `\u` escapes
+    // used explicitly for the non-ASCII characters.
+    val nlEntries = listOf(entry("Chapter", listOf("\u2167"), caseSensitive = true))
+    assertEquals(
+      "say \u300CChapter\u300D now",
+      DictionaryEngine.applyDictionary("say \u300C\u2167\u300D now", nlEntries),
+    )
+
+    // \u00B2 (², SUPERSCRIPT TWO) is category No (OTHER_NUMBER) — also missed by
+    // Character.isDigit.
+    val noEntries = listOf(entry("Squared", listOf("\u00B2"), caseSensitive = true))
+    assertEquals("say (Squared) now", DictionaryEngine.applyDictionary("say (\u00B2) now", noEntries))
+  }
+
   // ---- No-op / helpers ------------------------------------------------------
 
   @Test

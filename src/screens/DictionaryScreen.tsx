@@ -31,6 +31,15 @@ import { strings } from '../strings';
 
 export interface DictionaryScreenViewProps {
   entries: DictionaryEntry[];
+  /**
+   * Fresh snapshot of the dictionary at call time. `entries` is a render prop
+   * (only as current as the last commit); rapid add/delete/toggle taps that
+   * fire before a re-render must NOT derive their mutation from it, or the
+   * second mutation would overwrite the first (dropping an edit). Mutations
+   * always read `getEntries()` instead, mirroring how `persist` already reads
+   * a fresh settings snapshot.
+   */
+  getEntries: () => DictionaryEntry[];
   persist: (entries: DictionaryEntry[]) => void;
   onBack: () => void;
   readClipboard: () => Promise<string>;
@@ -39,6 +48,7 @@ export interface DictionaryScreenViewProps {
 
 export function DictionaryScreenView({
   entries,
+  getEntries,
   persist,
   onBack,
   readClipboard,
@@ -62,7 +72,7 @@ export function DictionaryScreenView({
   };
 
   const onAdd = () => {
-    const result = addDictionaryEntry(entries, { word, aliases: parseAliasInput(aliasText) });
+    const result = addDictionaryEntry(getEntries(), { word, aliases: parseAliasInput(aliasText) });
     if (result.error === 'empty-word') {
       setAddError(strings.dictionary.emptyWordError);
       return;
@@ -78,7 +88,7 @@ export function DictionaryScreenView({
   };
 
   const onDelete = (index: number) => {
-    persist(removeDictionaryEntry(entries, index));
+    persist(removeDictionaryEntry(getEntries(), index));
     // Re-index the expanded set so rows after the deleted one stay in sync.
     setExpanded((prev) => {
       const next = new Set<number>();
@@ -91,7 +101,7 @@ export function DictionaryScreenView({
   };
 
   const onToggleFlag = (index: number, key: 'case_sensitive' | 'replace_exact', value: boolean) => {
-    persist(updateDictionaryEntry(entries, index, { [key]: value }));
+    persist(updateDictionaryEntry(getEntries(), index, { [key]: value }));
   };
 
   const onPasteFromClipboard = async () => {
@@ -276,10 +286,12 @@ export function DictionaryScreen({ onBack }: { onBack: () => void }): React.Reac
     },
     [getSettings, updateSettings],
   );
+  const getEntries = useCallback(() => getSettings().dictionary, [getSettings]);
 
   return (
     <DictionaryScreenView
       entries={settings.dictionary}
+      getEntries={getEntries}
       persist={persist}
       onBack={onBack}
       readClipboard={() => Clipboard.getStringAsync()}

@@ -107,8 +107,23 @@ object DictionaryEngine {
 
   private fun cpCount(s: String): Int = s.codePointCount(0, s.length)
 
-  /** Letter or number (Unicode-aware) — mirrors `/[\p{L}\p{N}]/u`. */
-  private fun isAlnum(cp: Int): Boolean = Character.isLetter(cp) || Character.isDigit(cp)
+  /**
+   * Letter or number (Unicode-aware) — mirrors `/[\p{L}\p{N}]/u`. `Character.isDigit`
+   * only covers the Nd (DECIMAL_DIGIT_NUMBER) category, so it misses Nl
+   * (LETTER_NUMBER, e.g. Ⅷ) and No (OTHER_NUMBER, e.g. ², ½) which `\p{N}` — and
+   * the TS/Rust ports — do include. `isLetterOrDigit` does NOT fix this either,
+   * since it's built from the same `isDigit`.
+   */
+  private fun isAlnum(cp: Int): Boolean {
+    if (Character.isLetter(cp)) return true
+    return when (Character.getType(cp)) {
+      Character.DECIMAL_DIGIT_NUMBER.toInt(),
+      Character.LETTER_NUMBER.toInt(),
+      Character.OTHER_NUMBER.toInt(),
+      -> true
+      else -> false
+    }
+  }
 
   /** A cased code point currently in its uppercase form. */
   private fun isUpperCp(cp: Int): Boolean =
@@ -118,7 +133,13 @@ object DictionaryEngine {
   private fun splitWords(text: String): List<String> =
     text.split(WHITESPACE).filter { it.isNotEmpty() }
 
-  private val WHITESPACE = Regex("\\s+")
+  /**
+   * `(?U)` turns on `Pattern.UNICODE_CHARACTER_CLASS` so `\s` matches the full
+   * Unicode White_Space property (NBSP U+00A0, ideographic space U+3000, narrow
+   * NBSP U+202F, etc.) — plain Java `\s` is ASCII-only and would otherwise
+   * desync this tokenizer from the TS/Rust ports (JS `\s` is Unicode-aware).
+   */
+  private val WHITESPACE = Regex("(?U)\\s+")
 
   /** Trim leading/trailing non-alphanumeric code points. */
   private fun trimNonAlnum(word: String): String {

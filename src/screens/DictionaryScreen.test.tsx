@@ -8,14 +8,19 @@ function entry(word: string, over: Partial<DictionaryEntry> = {}): DictionaryEnt
   return { word, sounds_like: [], replace_exact: false, case_sensitive: false, ...over };
 }
 
-function renderScreen(over: { entries?: DictionaryEntry[] } = {}) {
+function renderScreen(
+  over: { entries?: DictionaryEntry[]; getEntries?: () => DictionaryEntry[] } = {},
+) {
   const persist = jest.fn();
   const onBack = jest.fn();
   const readClipboard = jest.fn(async () => '');
   const writeClipboard = jest.fn(async (_text: string) => undefined);
+  const entries = over.entries ?? [];
+  const getEntries = over.getEntries ?? (() => entries);
   const utils = render(
     <DictionaryScreenView
-      entries={over.entries ?? []}
+      entries={entries}
+      getEntries={getEntries}
       persist={persist}
       onBack={onBack}
       readClipboard={readClipboard}
@@ -137,5 +142,46 @@ describe('DictionaryScreenView', () => {
     const { getByText, onBack } = renderScreen();
     fireEvent.press(getByText(strings.common.back));
     expect(onBack).toHaveBeenCalled();
+  });
+
+  // ---- Rapid-edit race: mutations must read a fresh snapshot, not the ------
+  // ---- possibly-stale `entries` render prop. ------------------------------
+
+  it('onAdd derives its mutation from getEntries(), not the stale rendered entries prop', () => {
+    // Simulate a rapid double-tap: the rendered `entries` prop is still the old
+    // (empty) snapshot, but a fresh mutation already landed in getEntries().
+    const fresh: DictionaryEntry[] = [entry('ChargeBee')];
+    const { getByPlaceholderText, getByText, persist } = renderScreen({
+      entries: [],
+      getEntries: () => fresh,
+    });
+    fireEvent.changeText(getByPlaceholderText(strings.dictionary.wordPlaceholder), 'Kubernetes');
+    fireEvent.press(getByText(strings.dictionary.add));
+    expect(persist).toHaveBeenCalledWith([entry('ChargeBee'), entry('Kubernetes')]);
+  });
+
+  it('onDelete derives its mutation from getEntries(), not the stale rendered entries prop', () => {
+    const fresh: DictionaryEntry[] = [entry('ChargeBee'), entry('Kubernetes')];
+    const { getByLabelText, getByText, persist } = renderScreen({
+      entries: [entry('ChargeBee')],
+      getEntries: () => fresh,
+    });
+    fireEvent.press(getByLabelText(`ChargeBee — ${strings.dictionary.options}`));
+    fireEvent.press(getByText(strings.dictionary.delete));
+    expect(persist).toHaveBeenCalledWith([entry('Kubernetes')]);
+  });
+
+  it('onToggleFlag derives its mutation from getEntries(), not the stale rendered entries prop', () => {
+    const fresh: DictionaryEntry[] = [entry('ChargeBee'), entry('Kubernetes')];
+    const { getByLabelText, getByText, persist } = renderScreen({
+      entries: [entry('ChargeBee')],
+      getEntries: () => fresh,
+    });
+    fireEvent.press(getByLabelText(`ChargeBee — ${strings.dictionary.options}`));
+    fireEvent.press(getByText(strings.dictionary.matchCapitalization));
+    expect(persist).toHaveBeenCalledWith([
+      entry('ChargeBee', { case_sensitive: true }),
+      entry('Kubernetes'),
+    ]);
   });
 });

@@ -199,8 +199,10 @@ object OpenFlowHttp {
         params = keyterms.map { "keyterm" to it }
       } else {
         // Legacy models: repeated `keywords` (single words only — phrases skipped).
+        // `(?U)` makes `\s` Unicode-aware (NBSP/ideographic space/etc.), matching
+        // DictionaryEngine's tokenizer — see its WHITESPACE regex for detail.
         val keywords = DictionaryEngine.dictionaryWords(dictionary)
-          .filter { it.trim().isNotEmpty() && !it.trim().contains(Regex("\\s")) }
+          .filter { it.trim().isNotEmpty() && !it.trim().contains(Regex("(?U)\\s")) }
           .take(DictionaryEngine.DEEPGRAM_KEYWORDS_MAX_COUNT)
         params = keywords.map { "keywords" to it }
       }

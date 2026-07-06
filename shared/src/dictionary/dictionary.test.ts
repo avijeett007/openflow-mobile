@@ -172,6 +172,20 @@ describe('applyDictionary — unicode', () => {
   });
 });
 
+// ---- Unicode whitespace tokenization (parity with the Kotlin IME) ----------
+
+describe('applyDictionary — unicode whitespace separators', () => {
+  it('splits an alias across NBSP / ideographic space / narrow NBSP, same as Kotlin', () => {
+    // JS `\s` is already Unicode-aware (unlike bare Java `\s`), so this should
+    // already pass — it locks parity now that DictionaryEngine.kt's WHITESPACE
+    // regex also uses `(?U)` to match the same separators.
+    const entries = [entry('AB', ['alpha beta'])];
+    expect(applyDictionary('alpha\u00A0beta', entries, 0.0)).toBe('AB');
+    expect(applyDictionary('alpha\u3000beta', entries, 0.0)).toBe('AB');
+    expect(applyDictionary('alpha\u202Fbeta', entries, 0.0)).toBe('AB');
+  });
+});
+
 // ---- No-op / helpers -------------------------------------------------------
 
 describe('applyDictionary — no-op', () => {
