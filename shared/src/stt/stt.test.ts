@@ -1,5 +1,5 @@
 import { transcribe, type SttAudio } from './index';
-import type { SttSettings } from '../settings/schema';
+import type { DictionaryEntry, SttSettings } from '../settings/schema';
 import { AuthError, EndpointError, ConfigError } from '../errors';
 import {
   makeFetch,
@@ -122,5 +122,93 @@ describe('transcribe — Deepgram', () => {
         fetchImpl,
       }),
     ).rejects.toBeInstanceOf(EndpointError);
+  });
+});
+
+// ---- L2 engine biasing (dictionary) ----------------------------------------
+
+function entry(word: string, sounds_like: string[] = []): DictionaryEntry {
+  return { word, sounds_like, replace_exact: false, case_sensitive: false };
+}
+
+function formField(call: { init: RequestInit }, name: string): string | null {
+  const body = call.init.body;
+  if (!(body instanceof FormData)) throw new Error('recorded body is not FormData');
+  const v = body.get(name);
+  return typeof v === 'string' ? v : null;
+}
+
+describe('transcribe — biasing (OpenAI-compatible prompt)', () => {
+  it('appends a `prompt` field of canonical words and reports prompted=true', async () => {
+    const fetchImpl = makeFetch(() => jsonResponse({ text: 'ok' }));
+    const result = await transcribe({
+      settings: sttSettings(),
+      audio,
+      apiKey: 'k',
+      dictionary: [entry('ChargeBee', ['charge bee']), entry('Kubernetes')],
+      fetchImpl,
+    });
+    expect(result.prompted).toBe(true);
+    const call = fetchImpl.calls[0]!;
+    expect(await formFieldNames(call)).toContain('prompt');
+    // Canonical words only, comma-joined; aliases are not in the prompt.
+    expect(formField(call, 'prompt')).toBe('ChargeBee, Kubernetes');
+  });
+
+  it('sends no `prompt` and reports prompted=false for an empty dictionary', async () => {
+    const fetchImpl = makeFetch(() => jsonResponse({ text: 'ok' }));
+    const result = await transcribe({ settings: sttSettings(), audio, apiKey: 'k', fetchImpl });
+    expect(result.prompted).toBe(false);
+    expect(await formFieldNames(fetchImpl.calls[0]!)).not.toContain('prompt');
+  });
+});
+
+describe('transcribe — biasing (Deepgram keyterm/keywords)', () => {
+  const dgResponse = {
+    results: { channels: [{ alternatives: [{ transcript: 'ok' }] }] },
+  };
+
+  it('Nova-3 sends repeated `keyterm` params (words + aliases), prompted=true', async () => {
+    const fetchImpl = makeFetch(() => jsonResponse(dgResponse));
+    const result = await transcribe({
+      settings: sttSettings({ provider: 'deepgram', model: 'nova-3' }),
+      audio,
+      apiKey: 'dg',
+      dictionary: [entry('ChargeBee', ['charge bee'])],
+      fetchImpl,
+    });
+    expect(result.prompted).toBe(true);
+    const params = new URL(fetchImpl.calls[0]!.url).searchParams;
+    expect(params.getAll('keyterm')).toEqual(['ChargeBee', 'charge bee']);
+  });
+
+  it('legacy models send `keywords` (single words only; phrases skipped)', async () => {
+    const fetchImpl = makeFetch(() => jsonResponse(dgResponse));
+    const result = await transcribe({
+      settings: sttSettings({ provider: 'deepgram', model: 'nova-2' }),
+      audio,
+      apiKey: 'dg',
+      dictionary: [entry('ChargeBee'), entry('MacBook Pro')],
+      fetchImpl,
+    });
+    expect(result.prompted).toBe(true);
+    const params = new URL(fetchImpl.calls[0]!.url).searchParams;
+    // "MacBook Pro" is a phrase → skipped by the legacy keywords param.
+    expect(params.getAll('keywords')).toEqual(['ChargeBee']);
+    expect(params.getAll('keyterm')).toEqual([]);
+  });
+
+  it('reports prompted=false for an empty dictionary', async () => {
+    const fetchImpl = makeFetch(() => jsonResponse(dgResponse));
+    const result = await transcribe({
+      settings: sttSettings({ provider: 'deepgram', model: 'nova-3' }),
+      audio,
+      apiKey: 'dg',
+      fetchImpl,
+    });
+    expect(result.prompted).toBe(false);
+    const params = new URL(fetchImpl.calls[0]!.url).searchParams;
+    expect(params.getAll('keyterm')).toEqual([]);
+    expect(params.getAll('keywords')).toEqual([]);
   });
 });

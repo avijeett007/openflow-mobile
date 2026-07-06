@@ -64,6 +64,22 @@ object LocalSttLogic {
   fun shouldRunCleanup(enabled: Boolean, hasCleanupKey: Boolean): Boolean =
     enabled && hasCleanupKey
 
+  /** Android API level at which `RecognizerIntent.EXTRA_BIASING_STRINGS` exists (TIRAMISU). */
+  const val BIASING_MIN_API_LEVEL = 33
+
+  /**
+   * Whether the on-device recognizer was actually biased with the dictionary
+   * words — the value passed to [DictionaryEngine.correctTranscript] as
+   * `prompted`. Mirrors the TS decision (useDictation `processLocalTranscript`):
+   * biasing is only attached, and therefore `prompted` is only true, when a
+   * non-empty vocabulary was sent on an API-33+ device. Below API 33 the
+   * `EXTRA_BIASING_STRINGS` extra does not exist, so nothing is sent and the full
+   * fuzzy correction pass should run instead. Pure (takes `apiLevel` explicitly)
+   * so it stays unit-testable off-device.
+   */
+  fun biasingPrompted(apiLevel: Int, biasingWordCount: Int): Boolean =
+    apiLevel >= BIASING_MIN_API_LEVEL && biasingWordCount > 0
+
   // ---- SpeechRecognizer error-code → human message ------------------------
 
   // These mirror the public `android.speech.SpeechRecognizer.ERROR_*` int values

@@ -104,4 +104,23 @@ describe('prompt assembly', () => {
       { role: 'user', content: 'USR' },
     ]);
   });
+
+  it('appends the dictionary Vocabulary block to the system content (L3)', () => {
+    const [system, user] = assembleCleanupMessages('SYS', 'USR', [
+      { word: 'ChargeBee', sounds_like: ['charge bee'], replace_exact: false, case_sensitive: false },
+    ]);
+    expect(system!.role).toBe('system');
+    expect(system!.content).toMatch(/^SYS\n\nVocabulary/);
+    expect(system!.content).toContain('ChargeBee');
+    // Aliases are never surfaced to the cleanup model.
+    expect(system!.content).not.toContain('charge bee');
+    expect(user).toEqual({ role: 'user', content: 'USR' });
+  });
+
+  it('leaves the system content untouched for an empty dictionary', () => {
+    expect(assembleCleanupMessages('SYS', 'USR', [])).toEqual([
+      { role: 'system', content: 'SYS' },
+      { role: 'user', content: 'USR' },
+    ]);
+  });
 });

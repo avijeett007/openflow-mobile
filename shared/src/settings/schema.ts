@@ -79,6 +79,33 @@ export type Prompt = z.infer<typeof PromptSchema>;
 export const PrivacyModeSchema = z.enum(['full', 'keywordsOnly', 'off']);
 export type PrivacyMode = z.infer<typeof PrivacyModeSchema>;
 
+// ---- Dictionary -------------------------------------------------------------
+
+/**
+ * A user dictionary entry: a canonical spelling plus optional "sounds like"
+ * aliases (misheard / alternate forms) that get rewritten to the canonical word.
+ *
+ * Field names are snake_case ON PURPOSE — this is the SAME JSON the desktop app
+ * (openflow v0.10.0) imports/exports, so the shape must round-trip byte-for-byte
+ * between the two apps. Do NOT camelCase these.
+ *
+ * IME MIRROR: the Kotlin IME mirrors the settings shape. When the Android IME
+ * gains dictionary support (a later chunk, in lockstep) it must mirror this
+ * exact object: `word: string`, `sounds_like: string[]`, `replace_exact: bool`,
+ * `case_sensitive: bool`, with the same defaults (`[]`, `false`, `false`).
+ */
+export const DictionaryEntrySchema = z.object({
+  /** Canonical spelling used in the output. Spaces are allowed (phrases). */
+  word: z.string().min(1),
+  /** Aliases / misheard forms replaced by `word` — exact-match first, then fuzzy. */
+  sounds_like: z.array(z.string()).default([]),
+  /** When true, only deterministic alias replacement runs (no fuzzy on `word`). */
+  replace_exact: z.boolean().default(false),
+  /** When true, `word` is emitted verbatim (bypasses case-pattern preservation). */
+  case_sensitive: z.boolean().default(false),
+});
+export type DictionaryEntry = z.infer<typeof DictionaryEntrySchema>;
+
 // ---- Translator -------------------------------------------------------------
 
 /**
@@ -118,6 +145,12 @@ export const SettingsSchema = z.object({
   prompts: z.array(PromptSchema).min(1).default(() => [defaultPrompt()]),
   privacyMode: PrivacyModeSchema.default('full'),
   translator: TranslatorSettingsSchema.default(TranslatorSettingsSchema.parse({})),
+  /**
+   * Custom vocabulary / word replacements. Purely ADDITIVE — `SETTINGS_VERSION`
+   * stays 1, old payloads without a `dictionary` key parse to `[]`. The Kotlin
+   * IME must mirror this array (see {@link DictionaryEntrySchema}).
+   */
+  dictionary: z.array(DictionaryEntrySchema).default([]),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 

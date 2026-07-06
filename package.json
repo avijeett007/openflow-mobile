@@ -1,6 +1,6 @@
 {
   "name": "openflow-mobile",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "OpenFlow Mobile — voice-dictation keyboard for iOS + Android with a companion app.",
   "license": "MIT",
   "private": true,

@@ -10,7 +10,7 @@ const config: ExpoConfig = {
   name: 'OpenFlow',
   slug: 'openflow-mobile',
   scheme: 'openflow',
-  version: '0.3.0',
+  version: '0.4.0',
   orientation: 'portrait',
   userInterfaceStyle: 'automatic',
   newArchEnabled: true,

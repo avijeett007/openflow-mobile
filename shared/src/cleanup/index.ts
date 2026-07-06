@@ -1,5 +1,5 @@
 import { ConfigError, throwForResponse, EndpointError } from '../errors';
-import type { CleanupProvider, CleanupSettings, Prompt } from '../settings/schema';
+import type { CleanupProvider, CleanupSettings, DictionaryEntry, Prompt } from '../settings/schema';
 import { assembleCleanupMessages, resolvePrompt } from './prompt';
 
 export * from './prompt';
@@ -11,6 +11,11 @@ export interface CleanupOptions {
   apiKey: string;
   /** Prompt list used to resolve `settings.promptId`; defaults to the built-in. */
   prompts?: Prompt[];
+  /**
+   * Dictionary entries — when non-empty, a "Vocabulary" block is appended to the
+   * cleanup system prompt (L3) so the LLM keeps the user's exact spellings.
+   */
+  dictionary?: DictionaryEntry[];
   /** Injectable fetch for testing; defaults to the global `fetch`. */
   fetchImpl?: typeof fetch;
 }
@@ -65,7 +70,7 @@ export async function cleanTranscript(opts: CleanupOptions): Promise<CleanupResu
   const url = `${base}/chat/completions`;
 
   const prompt = resolvePrompt(opts.settings.promptId, opts.prompts);
-  const messages = assembleCleanupMessages(prompt.prompt, opts.transcript);
+  const messages = assembleCleanupMessages(prompt.prompt, opts.transcript, opts.dictionary);
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   // Ollama (and other keyless custom endpoints) may run without a key.

@@ -117,6 +117,10 @@ export const strings = {
     testing: 'Testing…',
     testPass: 'Connection OK',
     testFail: 'Failed',
+    dictionarySection: 'Dictionary',
+    dictionaryExplainerShort: 'Custom words, names, and jargon OpenFlow should spell your way.',
+    dictionaryOpen: 'Manage dictionary',
+    dictionaryCountFmt: (n: number): string => `${n} ${n === 1 ? 'word' : 'words'} saved`,
   },
 
   privacyModes: {
@@ -172,8 +176,7 @@ export const strings = {
     // Announced to VoiceOver when a new translation appears.
     announceFmt: (lang: string, text: string): string => `Translation in ${lang}: ${text}`,
     // Honest per-turn error copy (fallbacks when the platform gives no message).
-    sttUnavailable:
-      'On-device speech recognition is unavailable for this language on this device.',
+    sttUnavailable: 'On-device speech recognition is unavailable for this language on this device.',
     permissionDenied: 'Speech-recognition permission was not granted.',
     sttFailed: 'Couldn’t hear that — please try again.',
     translateFailed:
@@ -208,6 +211,44 @@ export const strings = {
     // Platform explainer when translation isn't available at all.
     iosFloorExplainer:
       'Live Translation needs iOS 18 or newer with Apple’s on-device Translation. Everything else in OpenFlow still works.',
+  },
+
+  dictionary: {
+    title: 'Dictionary',
+    explainer: 'Words, names and jargon you use — OpenFlow will spell them your way.',
+    empty: 'No dictionary entries yet — add one below.',
+    wordLabel: 'Word or phrase',
+    wordPlaceholder: 'e.g. MacBook Pro',
+    aliasesLabel: 'Sounds like (optional, comma-separated)',
+    aliasesPlaceholder: 'e.g. mac book pro, macbook',
+    add: 'Add word',
+    emptyWordError: 'Enter a word before adding it.',
+    duplicateWordError: 'That word is already in your dictionary.',
+    aliasesFmt: (n: number): string => `${n} ${n === 1 ? 'alias' : 'aliases'}`,
+    noAliases: 'No aliases',
+    options: 'Options',
+    matchCapitalization: 'Match my capitalization exactly',
+    exactOnly: 'Only replace exact matches',
+    delete: 'Delete',
+    countFmt: (n: number): string => `${n} ${n === 1 ? 'word' : 'words'}`,
+    importSection: 'Import',
+    importHint:
+      'Paste dictionary JSON exported from OpenFlow desktop, or a simple comma/newline-separated word list.',
+    importFieldLabel: 'Import text',
+    importPlaceholder: 'Paste words or JSON here…',
+    pasteFromClipboard: 'Paste from clipboard',
+    clipboardEmpty: 'Clipboard is empty.',
+    importButton: 'Import words',
+    importEmpty: 'Paste some text first.',
+    importNothingFound: 'Couldn’t find any words to import in that text.',
+    importedFmt: (added: number, skipped: number): string =>
+      skipped > 0
+        ? `Imported ${added} ${added === 1 ? 'word' : 'words'} (${skipped} skipped)`
+        : `Imported ${added} ${added === 1 ? 'word' : 'words'}`,
+    exportSection: 'Export',
+    exportButton: 'Copy dictionary as JSON',
+    exportEmpty: 'Add a word first — nothing to export yet.',
+    exportedConfirmation: 'Copied to clipboard!',
   },
 
   common: {

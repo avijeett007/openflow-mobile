@@ -150,13 +150,15 @@ class OpenFlowHttpContractTest {
         return OpenFlowHttp.HttpResponse(200, stt.getJSONObject("response").getJSONObject("body").toString())
       }
     }
-    val text = OpenFlowHttp.transcribe(
+    val result = OpenFlowHttp.transcribe(
       sttSettings,
       apiKey,
       OpenFlowHttp.AudioClip("FAKE".toByteArray(), "audio/wav", "audio.wav"),
-      sttTransport,
+      transport = sttTransport,
     )
-    assertEquals(stt.getString("expectedText"), text)
+    assertEquals(stt.getString("expectedText"), result.text)
+    // No dictionary supplied → no biasing was sent → full-correction path.
+    assertFalse("no dictionary means not prompted", result.prompted)
     assertEquals(stt.getJSONObject("request").getString("url"), sttTransport.seen.url)
 
     val cleanup = loadFixture("cleanup-groq.json")
@@ -213,5 +215,91 @@ class OpenFlowHttpContractTest {
       status = e.status
     }
     assertEquals(401, status)
+  }
+
+  // ---- L2 engine biasing (dictionary) --------------------------------------
+
+  private fun dict(
+    word: String,
+    soundsLike: List<String> = emptyList(),
+  ): DictionaryEngine.Entry = DictionaryEngine.Entry(word, soundsLike)
+
+  private fun sttCfg(provider: String, model: String): OpenFlowHttp.SttConfig =
+    OpenFlowHttp.SttConfig(provider, model, null, "stt.apiKey")
+
+  private fun multipart(req: OpenFlowHttp.HttpRequest): OpenFlowHttp.Body.Multipart =
+    req.body as OpenFlowHttp.Body.Multipart
+
+  @Test
+  fun openAiCompatible_emitsPromptFieldWithCanonicalWords() {
+    val cfg = sttCfg("groq", "whisper-large-v3-turbo")
+    val entries = listOf(dict("ChargeBee", listOf("charge bee")), dict("Kubernetes"))
+    val audio = OpenFlowHttp.AudioClip(ByteArray(0), "audio/wav", "a.wav")
+    val req = OpenFlowHttp.buildTranscribeRequest(cfg, apiKey, audio, entries)
+
+    val parts = multipart(req).parts
+    // prompt appended AFTER response_format; canonical words only (no aliases).
+    assertEquals(listOf("file", "model", "response_format", "prompt"), parts.map { it.name })
+    val prompt = parts.first { it.name == "prompt" } as OpenFlowHttp.Part.Text
+    assertEquals("ChargeBee, Kubernetes", prompt.value)
+    assertTrue(OpenFlowHttp.sttPrompted(cfg, entries))
+  }
+
+  @Test
+  fun openAiCompatible_emptyDictionary_sendsNoPrompt() {
+    val cfg = sttCfg("groq", "whisper-large-v3-turbo")
+    val req = OpenFlowHttp.buildTranscribeRequest(cfg, apiKey, OpenFlowHttp.AudioClip(ByteArray(0), "audio/wav", "a.wav"))
+    assertEquals(listOf("file", "model", "response_format"), multipart(req).parts.map { it.name })
+    assertFalse(OpenFlowHttp.sttPrompted(cfg, emptyList()))
+  }
+
+  @Test
+  fun deepgramNova3_emitsRepeatedKeytermWithWordsAndAliases() {
+    val cfg = sttCfg("deepgram", "nova-3-general")
+    val entries = listOf(dict("ChargeBee", listOf("charge bee")), dict("Kubernetes", listOf("kubernetis")))
+    val req = OpenFlowHttp.buildTranscribeRequest(cfg, apiKey, OpenFlowHttp.AudioClip(ByteArray(0), "audio/m4a", "a.m4a"), entries)
+    // keyterm carries canonical words AND aliases; spaces URL-encoded.
+    assertTrue(req.url.contains("keyterm=ChargeBee"))
+    assertTrue(req.url.contains("keyterm=charge%20bee"))
+    assertTrue(req.url.contains("keyterm=Kubernetes"))
+    assertTrue(req.url.contains("keyterm=kubernetis"))
+    assertFalse("legacy keywords param not used for nova-3", req.url.contains("keywords="))
+    assertTrue(OpenFlowHttp.sttPrompted(cfg, entries))
+  }
+
+  @Test
+  fun deepgramLegacy_emitsKeywordsSingleWordsOnly() {
+    val cfg = sttCfg("deepgram", "nova-2")
+    // "MacBook Pro" is a phrase → skipped for legacy `keywords` (single words only).
+    val entries = listOf(dict("Kubernetes", listOf("kubernetis")), dict("MacBook Pro"))
+    val req = OpenFlowHttp.buildTranscribeRequest(cfg, apiKey, OpenFlowHttp.AudioClip(ByteArray(0), "audio/m4a", "a.m4a"), entries)
+    assertTrue(req.url.contains("keywords=Kubernetes"))
+    assertFalse("phrase skipped for legacy keywords", req.url.contains("MacBook"))
+    assertFalse("keyterm not used for legacy model", req.url.contains("keyterm="))
+    assertTrue(OpenFlowHttp.sttPrompted(cfg, entries))
+  }
+
+  @Test
+  fun cleanup_appendsVocabularyBlock_canonicalWordsOnly() {
+    val cfg = OpenFlowHttp.parseCleanup(settingsJsonFor("cleanup", loadFixture("cleanup-groq.json")))
+    val entries = listOf(dict("ChargeBee", listOf("charge bee")), dict("Kubernetes", listOf("kubernetis")))
+    val req = OpenFlowHttp.buildCleanupRequest(cfg, apiKey, "the transcript", OpenFlowHttp.DEFAULT_PROMPT_TEXT, entries)
+    val messages = JSONObject((req.body as OpenFlowHttp.Body.Json).text).getJSONArray("messages")
+    val system = messages.getJSONObject(0).getString("content")
+    assertTrue(system.startsWith(OpenFlowHttp.DEFAULT_PROMPT_TEXT))
+    assertTrue(system.contains("Vocabulary — always use these exact spellings"))
+    assertTrue(system.contains("ChargeBee"))
+    assertTrue(system.contains("Kubernetes"))
+    // Aliases never leak into the cleanup prompt.
+    assertFalse(system.contains("charge bee"))
+    assertFalse(system.contains("kubernetis"))
+  }
+
+  @Test
+  fun cleanup_emptyDictionary_leavesPromptUnchanged() {
+    val cfg = OpenFlowHttp.parseCleanup(settingsJsonFor("cleanup", loadFixture("cleanup-groq.json")))
+    val req = OpenFlowHttp.buildCleanupRequest(cfg, apiKey, "t", OpenFlowHttp.DEFAULT_PROMPT_TEXT)
+    val messages = JSONObject((req.body as OpenFlowHttp.Body.Json).text).getJSONArray("messages")
+    assertEquals(OpenFlowHttp.DEFAULT_PROMPT_TEXT, messages.getJSONObject(0).getString("content"))
   }
 }

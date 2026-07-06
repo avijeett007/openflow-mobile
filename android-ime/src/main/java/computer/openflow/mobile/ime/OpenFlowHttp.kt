@@ -77,6 +77,15 @@ object OpenFlowHttp {
 
   data class HttpResponse(val status: Int, val body: String)
 
+  /**
+   * STT result plus whether vocabulary biasing was actually sent to the engine.
+   * Mirrors `TranscribeResult` in shared: `prompted` picks the post-STT
+   * correction pass — `true` → aliases-only (engine already biased, skip the
+   * redundant fuzzy pass); `false` → full [DictionaryEngine.applyDictionary].
+   * Always `false` for an empty dictionary.
+   */
+  data class TranscribeResult(val text: String, val prompted: Boolean)
+
   /** Injectable HTTP executor (the Kotlin analogue of the TS `fetchImpl`). */
   interface HttpTransport {
     fun execute(request: HttpRequest): HttpResponse
@@ -160,14 +169,73 @@ object OpenFlowHttp {
     return stripTrailingSlash(base)
   }
 
-  fun buildTranscribeRequest(cfg: SttConfig, apiKey: String, audio: AudioClip): HttpRequest {
+  // ---- L2 engine biasing ---------------------------------------------------
+
+  /**
+   * The vocabulary biasing computed for one STT request. Deterministic given
+   * (cfg, dictionary): [buildTranscribeRequest] attaches it and [transcribe]
+   * reports [prompted] on the result. Mirrors the biasing in shared
+   * `stt/index.ts` (`prompt` for OpenAI-compatible; `keyterm`/`keywords` for
+   * Deepgram, picked by model name).
+   */
+  private data class SttBiasing(
+    /** OpenAI-compatible multipart `prompt` (null → send none). */
+    val openAiPrompt: String?,
+    /** Ordered Deepgram query params, each ("keyterm"|"keywords", value). */
+    val deepgramParams: List<Pair<String, String>>,
+    /** Whether any biasing was actually attached. */
+    val prompted: Boolean,
+  )
+
+  private fun computeSttBiasing(cfg: SttConfig, dictionary: List<DictionaryEngine.Entry>): SttBiasing {
+    if (cfg.provider == "deepgram") {
+      if (dictionary.isEmpty()) return SttBiasing(null, emptyList(), false)
+      val params: List<Pair<String, String>>
+      if (DictionaryEngine.deepgramBiasingStyle(cfg.model) == "keyterm") {
+        // Nova-3 / Flux: repeated `keyterm` (canonical words + aliases, multi-word OK).
+        val keyterms = DictionaryEngine.deepgramKeytermWords(dictionary)
+          .filter { it.trim().isNotEmpty() }
+          .take(DictionaryEngine.DEEPGRAM_KEYTERM_MAX_COUNT)
+        params = keyterms.map { "keyterm" to it }
+      } else {
+        // Legacy models: repeated `keywords` (single words only — phrases skipped).
+        // `(?U)` makes `\s` Unicode-aware (NBSP/ideographic space/etc.), matching
+        // DictionaryEngine's tokenizer — see its WHITESPACE regex for detail.
+        val keywords = DictionaryEngine.dictionaryWords(dictionary)
+          .filter { it.trim().isNotEmpty() && !it.trim().contains(Regex("(?U)\\s")) }
+          .take(DictionaryEngine.DEEPGRAM_KEYWORDS_MAX_COUNT)
+        params = keywords.map { "keywords" to it }
+      }
+      return SttBiasing(null, params, params.isNotEmpty())
+    }
+    // OpenAI-compatible: free-text `prompt`, canonical words only, tail-truncated.
+    val prompt = DictionaryEngine.buildPromptString(
+      DictionaryEngine.dictionaryWords(dictionary),
+      DictionaryEngine.OPENAI_PROMPT_MAX_CHARS,
+    )
+    return SttBiasing(prompt, emptyList(), prompt != null)
+  }
+
+  /** Whether [buildTranscribeRequest] would attach biasing for this (cfg, dictionary). */
+  fun sttPrompted(cfg: SttConfig, dictionary: List<DictionaryEngine.Entry>): Boolean =
+    computeSttBiasing(cfg, dictionary).prompted
+
+  fun buildTranscribeRequest(
+    cfg: SttConfig,
+    apiKey: String,
+    audio: AudioClip,
+    dictionary: List<DictionaryEngine.Entry> = emptyList(),
+  ): HttpRequest {
+    val biasing = computeSttBiasing(cfg, dictionary)
     if (cfg.provider == "deepgram") {
       val base = stripTrailingSlash(cfg.baseUrl ?: DEEPGRAM_DEFAULT_BASE)
-      // Order matters — mirrors the URLSearchParams order in shared: model, smart_format.
-      val url = "$base/v1/listen?model=${urlEncode(cfg.model)}&smart_format=true"
+      // Order matters — mirrors the URLSearchParams order in shared: model,
+      // smart_format, then the repeated keyterm/keywords biasing params.
+      val sb = StringBuilder("$base/v1/listen?model=${urlEncode(cfg.model)}&smart_format=true")
+      for ((k, v) in biasing.deepgramParams) sb.append("&$k=${urlEncode(v)}")
       return HttpRequest(
         method = "POST",
-        url = url,
+        url = sb.toString(),
         headers = mapOf(
           "Authorization" to "Token $apiKey",
           "Content-Type" to audio.mimeType,
@@ -176,17 +244,17 @@ object OpenFlowHttp {
       )
     }
     val url = "${resolveOpenAiBase(cfg)}/audio/transcriptions"
+    val parts = ArrayList<Part>()
+    parts.add(Part.File("file", audio.fileName, audio.mimeType, audio.bytes))
+    parts.add(Part.Text("model", cfg.model))
+    parts.add(Part.Text("response_format", "json"))
+    // Append `prompt` AFTER response_format (mirrors the FormData order in shared).
+    biasing.openAiPrompt?.let { parts.add(Part.Text("prompt", it)) }
     return HttpRequest(
       method = "POST",
       url = url,
       headers = mapOf("Authorization" to "Bearer $apiKey"),
-      body = Body.Multipart(
-        listOf(
-          Part.File("file", audio.fileName, audio.mimeType, audio.bytes),
-          Part.Text("model", cfg.model),
-          Part.Text("response_format", "json"),
-        ),
-      ),
+      body = Body.Multipart(parts),
     )
   }
 
@@ -214,11 +282,13 @@ object OpenFlowHttp {
     settingsJson: String,
     apiKey: String,
     audio: AudioClip,
+    dictionary: List<DictionaryEngine.Entry> = emptyList(),
     transport: HttpTransport = DefaultHttpTransport,
-  ): String {
+  ): TranscribeResult {
     val cfg = parseStt(settingsJson)
-    val req = buildTranscribeRequest(cfg, apiKey, audio)
-    return parseTranscribeResponse(cfg, transport.execute(req))
+    val req = buildTranscribeRequest(cfg, apiKey, audio, dictionary)
+    val text = parseTranscribeResponse(cfg, transport.execute(req))
+    return TranscribeResult(text, sttPrompted(cfg, dictionary))
   }
 
   // ---- Cleanup -------------------------------------------------------------
@@ -234,15 +304,28 @@ object OpenFlowHttp {
     return stripTrailingSlash(base)
   }
 
+  /**
+   * Assemble the cleanup system message: the resolved prompt, plus the "Vocabulary
+   * — always use these exact spellings…" block appended (canonical words only,
+   * ~800-char tail-capped) when the dictionary is non-empty. Mirrors shared
+   * `assembleCleanupMessages` / desktop `build_system_prompt`.
+   */
+  fun buildCleanupSystemContent(promptText: String, dictionary: List<DictionaryEngine.Entry>): String {
+    val block = DictionaryEngine.dictionaryVocabularyBlock(dictionary) ?: return promptText
+    return if (promptText.isNotEmpty()) "$promptText\n\n$block" else block
+  }
+
   fun buildCleanupRequest(
     cfg: CleanupConfig,
     apiKey: String,
     transcript: String,
     promptText: String,
+    dictionary: List<DictionaryEngine.Entry> = emptyList(),
   ): HttpRequest {
     val url = "${resolveChatBase(cfg)}/chat/completions"
+    val systemContent = buildCleanupSystemContent(promptText, dictionary)
     val messages = JSONArray()
-      .put(JSONObject().put("role", "system").put("content", promptText))
+      .put(JSONObject().put("role", "system").put("content", systemContent))
       .put(JSONObject().put("role", "user").put("content", transcript))
     val body = JSONObject()
       .put("model", cfg.model)
@@ -275,7 +358,9 @@ object OpenFlowHttp {
   ): String {
     val cfg = parseCleanup(settingsJson)
     val promptText = resolvePromptText(settingsJson, cfg.promptId)
-    val req = buildCleanupRequest(cfg, apiKey, transcript, promptText)
+    // L3: inject the dictionary "Vocabulary" block so cleanup keeps custom spellings.
+    val dictionary = DictionaryEngine.parseDictionary(settingsJson)
+    val req = buildCleanupRequest(cfg, apiKey, transcript, promptText, dictionary)
     return parseCleanupResponse(transport.execute(req))
   }
 

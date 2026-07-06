@@ -231,6 +231,10 @@ class OpenFlowIme : InputMethodService() {
   private fun startLocalListening(settingsJson: String?) {
     val engine = localEngine ?: LocalSttEngine(applicationContext).also { localEngine = it }
     setStatus(Status.RECORDING, "Listening… tap to stop")
+    // L2 on-device biasing: pass the dictionary canonical words to the recognizer
+    // (attached as EXTRA_BIASING_STRINGS on API 33+; a no-op below — see
+    // LocalSttEngine.buildIntent).
+    val biasingWords = DictionaryEngine.dictionaryWords(DictionaryEngine.parseDictionary(settingsJson))
     engine.start(object : LocalSttEngine.Callbacks {
       override fun onPartial(text: String) {
         // Show the live hypothesis in the status area; never commit a partial.
@@ -244,7 +248,7 @@ class OpenFlowIme : InputMethodService() {
       override fun onError(code: Int, message: String) {
         setStatus(Status.ERROR, message)
       }
-    })
+    }, biasingWords)
   }
 
   /**
@@ -254,11 +258,22 @@ class OpenFlowIme : InputMethodService() {
    * commit the raw transcript directly.
    */
   private fun onLocalFinal(settingsJson: String?, finalText: String) {
-    val text = finalText.trim()
-    if (text.isEmpty()) {
+    val trimmed = finalText.trim()
+    if (trimmed.isEmpty()) {
       setStatus(Status.IDLE, LocalSttLogic.errorMessage(LocalSttLogic.ERROR_NO_MATCH))
       return
     }
+
+    // L1 dictionary correction. `prompted` mirrors what we actually sent: the
+    // on-device recognizer was biased only when a non-empty vocabulary was
+    // attached on an API-33+ device (LocalSttEngine.buildIntent) → aliases-only;
+    // otherwise the full two-pass correction runs.
+    val dictionary = DictionaryEngine.parseDictionary(settingsJson)
+    val prompted = LocalSttLogic.biasingPrompted(
+      Build.VERSION.SDK_INT,
+      DictionaryEngine.dictionaryWords(dictionary).size,
+    )
+    val text = DictionaryEngine.correctTranscript(trimmed, dictionary, prompted)
 
     val cleanup = try {
       settingsJson?.let { OpenFlowHttp.parseCleanup(it) }
@@ -321,14 +336,20 @@ class OpenFlowIme : InputMethodService() {
       return
     }
 
+    // L1/L2 dictionary: bias the engine with the vocabulary, then correct the
+    // transcript — aliases-only when the engine was biased (`prompted`), else the
+    // full two-pass correction. Mirrors useDictation `processClip`.
+    val dictionary = DictionaryEngine.parseDictionary(settingsJson)
     val raw: String = try {
       val stt = OpenFlowHttp.parseStt(settingsJson)
       val key = store.getSecret(stt.apiKeyRef)
-      OpenFlowHttp.transcribe(
+      val result = OpenFlowHttp.transcribe(
         settingsJson,
         key,
         OpenFlowHttp.AudioClip(wav, AUDIO_MIME, AUDIO_FILENAME),
+        dictionary,
       )
+      DictionaryEngine.correctTranscript(result.text, dictionary, result.prompted)
     } catch (e: OpenFlowHttp.HttpError) {
       postStatus(Status.ERROR, "Transcription failed: ${e.message}")
       return

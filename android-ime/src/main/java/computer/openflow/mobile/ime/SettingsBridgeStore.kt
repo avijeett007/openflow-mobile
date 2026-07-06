@@ -44,6 +44,17 @@ class SettingsBridgeStore(private val context: Context) {
   /** The serialized settings JSON, or null if the app has not synced yet. */
   fun getSettingsJson(): String? = settingsPrefs.getString(SETTINGS_KEY, null)
 
+  /**
+   * The user's custom-vocabulary dictionary parsed from the settings-root JSON.
+   * A missing key, malformed JSON, or a not-yet-synced store all yield an empty
+   * list — the keyboard must never crash on bad settings. Parsing itself is the
+   * pure-JVM [DictionaryEngine.parseDictionary] (kept there, like
+   * [OpenFlowHttp.parseStt], so it stays unit-testable off-device); this is just
+   * the typed accessor onto the bridge store, parallel to [getSettingsJson].
+   */
+  fun getDictionary(): List<DictionaryEngine.Entry> =
+    DictionaryEngine.parseDictionary(getSettingsJson())
+
   /** Resolve a secret by its `apiKeyRef`. Returns "" when absent (keyless providers). */
   fun getSecret(ref: String): String = secretsPrefs?.getString(ref, null) ?: ""
 

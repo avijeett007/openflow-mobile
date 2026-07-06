@@ -26,6 +26,7 @@ export {
   PromptSchema,
   PrivacyModeSchema,
   TranslatorSettingsSchema,
+  DictionaryEntrySchema,
   SETTINGS_VERSION,
   defaultPrompt,
   defaultSettings,
@@ -45,6 +46,7 @@ export type {
   Prompt,
   PrivacyMode,
   TranslatorSettings,
+  DictionaryEntry,
 } from './settings';
 
 // STT
@@ -54,6 +56,25 @@ export type { TranscribeOptions, TranscribeResult, SttAudio } from './stt';
 // Cleanup
 export { cleanTranscript, assembleCleanupMessages, resolvePrompt } from './cleanup';
 export type { CleanupOptions, CleanupResult, ChatMessage } from './cleanup';
+
+// Dictionary (custom vocabulary / word replacements)
+export {
+  applyDictionary,
+  applyDictionaryAliasesOnly,
+  correctTranscript,
+  dictionaryWords,
+  DEFAULT_DICTIONARY_THRESHOLD,
+  soundex,
+  buildPromptString,
+  deepgramBiasingStyle,
+  deepgramKeytermWords,
+  dictionaryVocabularyBlock,
+  OPENAI_PROMPT_MAX_CHARS,
+  VOCABULARY_BLOCK_MAX_CHARS,
+  DEEPGRAM_KEYTERM_MAX_COUNT,
+  DEEPGRAM_KEYWORDS_MAX_COUNT,
+} from './dictionary';
+export type { DeepgramBiasingStyle } from './dictionary';
 
 // History + analytics
 export { applyPrivacy, computeAnalytics, countWords, TYPING_WPM } from './history';

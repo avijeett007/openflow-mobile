@@ -4,7 +4,9 @@ import {
   type Settings,
   applyPrivacy,
   cleanTranscript as sharedCleanTranscript,
+  correctTranscript,
   countWords,
+  dictionaryWords,
   transcribe as sharedTranscribe,
 } from '@openflow/shared';
 import type { DictationRecorder, RecordedClip } from '../lib/recorder';
@@ -143,6 +145,8 @@ export async function finishDictation(
         transcript: rawText,
         apiKey: cleanupKey,
         prompts: settings.prompts,
+        // L3: inject the "Vocabulary" block so the LLM keeps custom spellings.
+        dictionary: settings.dictionary,
       });
       cleanedText = result.text;
       cleanupProvider = settings.cleanup.provider;
@@ -200,8 +204,12 @@ export async function processClip(
       settings: settings.stt,
       audio: { bytes: clip.bytes, mimeType: clip.mimeType, fileName: clip.fileName },
       apiKey: sttKey,
+      // L2: bias the engine with the dictionary words.
+      dictionary: settings.dictionary,
     });
-    rawText = result.text;
+    // L1: post-STT correction. When the engine was biased (`prompted`) run the
+    // deterministic alias pass only (desktop parity); otherwise full correction.
+    rawText = correctTranscript(result.text, settings.dictionary, result.prompted);
   } catch (err) {
     const error = describeError(err);
     dispatch({ type: 'ERROR', error });
@@ -225,7 +233,15 @@ export async function processLocalTranscript(
   dispatch: (action: DictationAction) => void,
   opts: { appContext?: string } = {},
 ): Promise<ProcessResult> {
-  const rawText = transcript.trim();
+  const settings = deps.getSettings();
+  // L1: on-device biasing (contextualStrings) is passed to the recognizer at
+  // `start()` whenever the dictionary is non-empty. We treat that as "prompted"
+  // (desktop whisper-initial-prompt parity → aliases-only, skip the redundant
+  // fuzzy pass). contextualStrings is best-effort and the OS may ignore it, but
+  // gating on "was a non-empty dictionary sent" keeps `prompted` truthful about
+  // what we DID send and avoids double-correcting words already biased for.
+  const prompted = dictionaryWords(settings.dictionary).length > 0;
+  const rawText = correctTranscript(transcript.trim(), settings.dictionary, prompted);
   dispatch({ type: 'TRANSCRIBING' });
   dispatch({ type: 'TRANSCRIBED', rawText });
   return finishDictation(rawText, durationMs, ON_DEVICE_PROVIDER, deps, dispatch, opts);
@@ -246,7 +262,7 @@ export const LOCAL_PERMISSION_ERROR = 'Speech-recognition permission denied.';
 export async function startLocalSession(
   recognizer: LocalStt,
   dispatch: (action: DictationAction) => void,
-  opts: { lang?: string; onError?: (error: string) => void } = {},
+  opts: { lang?: string; contextualStrings?: string[]; onError?: (error: string) => void } = {},
 ): Promise<boolean> {
   const fail = (error: string): boolean => {
     dispatch({ type: 'ERROR', error });
@@ -265,6 +281,7 @@ export async function startLocalSession(
   try {
     await recognizer.start({
       lang: opts.lang,
+      contextualStrings: opts.contextualStrings,
       onPartial: (text) => dispatch({ type: 'PARTIAL', text }),
     });
     dispatch({ type: 'RECORD_START' });
@@ -341,6 +358,8 @@ export function useDictation(options: UseDictationOptions): UseDictationApi {
       }
       localStartedAtRef.current = Date.now();
       await startLocalSession(localStt, wrappedDispatch, {
+        // L2 on-device biasing: pass the dictionary words as contextualStrings.
+        contextualStrings: dictionaryWords(getSettings().dictionary),
         onError: (error) => onResult?.({ status: 'error', error, cleanupFailed: false }),
       });
       return;
